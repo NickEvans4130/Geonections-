@@ -19,7 +19,7 @@
     const index   = new Map(); // id -> bucketIdx
 
     const locate     = (id) => (index.has(id) ? index.get(id) : -1);
-    const firstOpen  = () => buckets.findIndex(s => s.size < capacity);
+    let firstOpen    = () => buckets.findIndex(s => s.size < capacity);
 
     function add(id) {
       const i = firstOpen();
@@ -47,7 +47,8 @@
     return {
       buckets, index, capacity, groups,
       locate, firstOpen, firstFullIdx,
-      add, remove, toggle, clearBucket, clearAll, entries
+      add, remove, toggle, clearBucket, clearAll, entries,
+      updateFirstOpen: (newFirstOpen) => { firstOpen = newFirstOpen; }
     };
   }
 
@@ -176,11 +177,26 @@
   submitBtn?.addEventListener("click", onSubmitGroup);
   deselectBtn?.addEventListener("click", clearSelection);
   shuffleBtn?.addEventListener("click", () => {
-    // Shuffle only unsolved tiles, keep solved ones at end
-    const unsolved = boardTiles.filter(t => !t.locked);
-    const solved = boardTiles.filter(t => t.locked);
-    shuffle(unsolved);
-    boardTiles = unsolved.concat(solved);
+    // Shuffle only unsolved tiles, keep solved ones in their exact positions
+    const unsolvedIndices = [];
+    const unsolvedTiles = [];
+    
+    // Find all unsolved tile indices and collect the tiles
+    boardTiles.forEach((tile, index) => {
+      if (!tile.locked) {
+        unsolvedIndices.push(index);
+        unsolvedTiles.push(tile);
+      }
+    });
+    
+    // Shuffle only the unsolved tiles
+    shuffle(unsolvedTiles);
+    
+    // Put shuffled unsolved tiles back in their original unsolved positions
+    unsolvedTiles.forEach((tile, i) => {
+      boardTiles[unsolvedIndices[i]] = tile;
+    });
+    
     initialRenderBoard();
     showMessage("");
   });
@@ -389,7 +405,7 @@
     const valid = (data || []).filter(t => t && t.country && t.difficulty && t.id);
     if (valid.length === 16) {
       // Exactly 16 valid tiles provided, use them directly
-      console.log("puzzle A", valid);
+      // console.log("puzzle A", valid);
       return { ok: true, tiles: valid.map(t => ({ ...t, locked: false })) };
     }
     const difficulties = ["Easy", "Medium", "Hard", "Expert"];
@@ -421,7 +437,7 @@
         tiles.push(...sampleN(arr, 4).map(x => ({ ...x, locked: false })));
       }
       if (tiles.length === 16) {
-        console.log("puzzle B", tiles);
+        // console.log("puzzle B", tiles);
         return { ok: true, tiles };
       }
     }
@@ -437,7 +453,7 @@
       const chosen = countryQuads.slice(0, 4);
       const tiles = chosen.flatMap(([, arr]) => sampleN(arr, 4)).slice(0, 16).map(x => ({ ...x, locked: false }));
       if (tiles.length === 16) {
-        console.log("puzzle C", tiles);
+        // console.log("puzzle C", tiles);
         return { ok: true, tiles };
       }
     }
@@ -497,6 +513,14 @@
       tileEl.addEventListener("click", () => {
         lastClickedTile = tile;
         if (tile.locked) return;
+        
+        // Check if this tile belongs to an already solved category
+        const solvedCategories = getSolvedCategories();
+        if (solvedCategories.has(tile.difficulty)) {
+          showMessage(`The ${tile.difficulty} category is already solved!`, true);
+          return;
+        }
+        
         const res = selections.toggle(tile.id, tile.locked);
         if (!res.ok) {
           if (res.reason === 'full') {
@@ -523,26 +547,51 @@
   }
 
   function applyRing(el, tile) {
-    const ringColor = tile.userTag ? DIFF_COLORS[tile.userTag] : (tile.locked ? DIFF_COLORS[tile.difficulty] : null);
-    el.classList.toggle("ring", !!ringColor);
-    if (ringColor) el.style.setProperty("--ring-color", ringColor);
-    else el.style.removeProperty("--ring-color");
+    // Only apply rings to tiles that don't have selections
+    if (selections.index.has(tile.id)) {
+      return; // Don't override selection colors
+    }
+    
+    // Clear any existing ring classes
+    el.classList.remove('ring', 'solved-ring', 'g1', 'g2', 'g3', 'g4');
+    
+    if (tile.locked) {
+      // Solved tile: show true difficulty color with thicker outline
+      el.classList.add('solved-ring');
+      if (tile.difficulty === 'Easy') el.classList.add('g1');
+      else if (tile.difficulty === 'Medium') el.classList.add('g2');
+      else if (tile.difficulty === 'Hard') el.classList.add('g3');
+      else if (tile.difficulty === 'Expert') el.classList.add('g4');
+    } else if (tile.userTag) {
+      // User-tagged tile: show difficulty color
+      el.classList.add('ring');
+      if (tile.userTag === 'Easy') el.classList.add('g1');
+      else if (tile.userTag === 'Medium') el.classList.add('g2');
+      else if (tile.userTag === 'Hard') el.classList.add('g3');
+      else if (tile.userTag === 'Expert') el.classList.add('g4');
+    }
   }
 
   // ========= SELECTION & GROUP SUBMISSION =========
   function updateSelectionUI() {
+    // Update the selection logic to skip solved categories
+    updateSelectionLogic();
+    
     // clear all selection classes
     for (const [, el] of tileEls) {
       el.classList.remove('selected', 'g1', 'g2', 'g3', 'g4');
     }
     
-    // Remove selections from locked tiles and reapply from buckets
+    // Get solved categories to filter out
+    const solvedCategories = getSolvedCategories();
+    
+    // Remove selections from locked tiles and tiles from solved categories
     const validSelections = [];
     selections.entries().forEach((ids, i) => {
       const validIds = ids.filter(id => {
         const tile = boardTiles.find(t => t.id === id);
-        if (tile && tile.locked) {
-          // Remove from bucket if tile is now locked
+        if (tile && (tile.locked || solvedCategories.has(tile.difficulty))) {
+          // Remove from bucket if tile is now locked or belongs to solved category
           selections.remove(id);
           return false;
         }
@@ -551,13 +600,23 @@
       validSelections.push({ bucket: i, ids: validIds });
     });
     
-    // Reapply valid selections
+    // Reapply valid selections with bucket-based colors
     validSelections.forEach(({ bucket, ids }) => {
-      const cls = `g${bucket + 1}`;
+      const colorClass = `g${bucket + 1}`; // g1, g2, g3, g4 based on bucket position
       ids.forEach(id => {
         const el = tileEls.get(id);
-        if (el) { el.classList.add('selected', cls); }
+        if (el) {
+          el.classList.add('selected', colorClass);
+        }
       });
+    });
+    
+    // Update rings for all tiles (solved tiles show true difficulty, selected tiles show bucket color)
+    boardTiles.forEach(tile => {
+      const el = tileEls.get(tile.id);
+      if (el) {
+        applyRing(el, tile);
+      }
     });
     
     // enable submit if *any* bucket is full
@@ -686,8 +745,6 @@
   }
 
 
-
-
   // ========= SHARE (RESULTS) =========
   function tilesForShareCanonical() {
     const byManual = { Easy: [], Medium: [], Hard: [], Expert: [] };
@@ -746,6 +803,48 @@
   }
 
   // ========= HELPERS =========
+  function getSolvedCategories() {
+    const solvedCategories = new Set();
+    const difficultyCounts = { Easy: 0, Medium: 0, Hard: 0, Expert: 0 };
+    
+    // Count how many tiles of each difficulty are locked (solved)
+    boardTiles.forEach(tile => {
+      if (tile.locked) {
+        difficultyCounts[tile.difficulty]++;
+      }
+    });
+    
+    // If a difficulty has 4 locked tiles, it's completely solved
+    Object.entries(difficultyCounts).forEach(([difficulty, count]) => {
+      if (count === 4) {
+        solvedCategories.add(difficulty);
+      }
+    });
+    
+    return solvedCategories;
+  }
+  
+  function updateSelectionLogic() {
+    const solvedCategories = getSolvedCategories();
+    
+    // Create a new firstOpen function that skips solved categories
+    const newFirstOpen = () => {
+      // Map difficulty to bucket index: Easy=0, Medium=1, Hard=2, Expert=3
+      const difficultyToBucket = { Easy: 0, Medium: 1, Hard: 2, Expert: 3 };
+      
+      // Find the first available bucket that doesn't correspond to a solved category
+      for (let i = 0; i < 4; i++) {
+        const difficulty = Object.keys(difficultyToBucket).find(d => difficultyToBucket[d] === i);
+        if (!solvedCategories.has(difficulty) && selections.buckets[i].size < 4) {
+          return i;
+        }
+      }
+      return -1; // No available buckets
+    };
+    
+    selections.updateFirstOpen(newFirstOpen);
+  }
+  
   function maybeAutoLock(country) {
     // If all 4 from this country are guessed correctly, auto-solve the group
     const groupTiles = boardTiles.filter(t => t.country === country && !t.locked);
