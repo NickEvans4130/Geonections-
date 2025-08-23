@@ -1,5 +1,6 @@
 (() => {
   // ========= CONFIG =========
+  const DEV_MODE = true; // Show country codes on tiles for testing
   const STREET_VIEW_API_KEY = "AIzaSyAb2IZiueqc9Io7GSYAp2hy6nvvUL_WdJw"; // your key
   
   // Export for use in tileModal.js
@@ -192,12 +193,24 @@
       infoModal.classList.add("hidden");
     }
   });
-  // Press 'F' key to open Street View fullscreen on the last clicked tile
+  // Keyboard shortcuts
   window.addEventListener("keydown", (e) => {
-    if ((e.key === "f" || e.key === "F") &&
-        (!document.activeElement || !/^(input|textarea)$/i.test(document.activeElement.tagName))) {
+    // Only handle keys when not in an input field
+    if (document.activeElement && /^(input|textarea)$/i.test(document.activeElement.tagName)) {
+      return;
+    }
+    
+    // Press 'F' key to open Street View fullscreen on the last clicked tile
+    if (e.key === "f" || e.key === "F") {
       if (lastClickedTile && tileModal?.classList.contains("hidden")) {
         openTileModal(lastClickedTile);
+      }
+    }
+    
+    // Press 'Enter' key to submit the current group selection
+    if (e.key === "Enter") {
+      if (selections.firstFullIdx() !== -1) {
+        onSubmitGroup();
       }
     }
   });
@@ -461,6 +474,14 @@
         img.decoding = "async";
         img.loading = "lazy";
         tileEl.appendChild(img);
+        
+        // Dev mode: show country code overlay
+        if (DEV_MODE) {
+          const countryCode = document.createElement("div");
+          countryCode.className = "dev-country-code";
+          countryCode.textContent = tile.country;
+          tileEl.appendChild(countryCode);
+        }
       } else {
         const ph = document.createElement("div");
         ph.className = "noimg";
@@ -573,36 +594,57 @@
   function lockGroup(country, tiles) {
     tiles.forEach(t => t.locked = true);
     addSolvedStripe(tiles[0].difficulty, country, tiles.map(t => t.url));
+    
+    // Reorder board: move solved group to next available row
+    reorderBoardAfterSolve();
+    
     updateStatus();
     
     // Check if all tiles are now locked (game solved)
     const allSolved = boardTiles.every(t => t.locked);
-    showMessage(allSolved ? "🎉 All groups found!" : `Correct! You found ${country}.`);
     
     if (allSolved) {
       // Game solved - enable sharing
       shareBtn?.removeAttribute("disabled");
     }
   }
-  function addSolvedStripe(difficulty, country, urls) {
-    const wrap = document.createElement("div");
-    wrap.className = "solved-group";
-    wrap.style.background = tinted(DIFF_COLORS[difficulty] || "#888", 0.22);
-    urls.forEach(u => {
-      const img = document.createElement("img");
-      img.src = u || "";
-      img.alt = "";
-      img.style.width = "100%";
-      img.style.height = "64px";
-      img.style.objectFit = "cover";
-      img.style.borderRadius = ".5rem";
-      wrap.appendChild(img);
+  
+  function reorderBoardAfterSolve() {
+    // Count how many groups are solved
+    const solvedCount = Math.floor(boardTiles.filter(t => t.locked).length / 4);
+    
+    if (solvedCount === 0) return;
+    
+    // Create new board order: solved groups first, then unsolved tiles
+    const solvedTiles = boardTiles.filter(t => t.locked);
+    const unsolvedTiles = boardTiles.filter(t => !t.locked);
+    
+    // Group solved tiles by their original positions to maintain row order
+    const solvedGroups = [];
+    for (let i = 0; i < solvedCount; i++) {
+      const startIdx = i * 4;
+      solvedGroups.push(solvedTiles.slice(startIdx, startIdx + 4));
+    }
+    
+    // Rebuild boardTiles array: solved groups in top rows, unsolved below
+    const newBoardTiles = [];
+    
+    // Add solved groups to top rows
+    solvedGroups.forEach(group => {
+      newBoardTiles.push(...group);
     });
-    const label = document.createElement("div");
-    label.className = "solved-label";
-    label.textContent = `${country} — ${difficulty}`;
-    wrap.appendChild(label);
-    solvedEl?.appendChild(wrap);
+    
+    // Add remaining unsolved tiles
+    newBoardTiles.push(...unsolvedTiles);
+    
+    // Update the boardTiles array
+    boardTiles = newBoardTiles;
+    
+    // Re-render the board to show new order
+    initialRenderBoard();
+  }
+  
+  function addSolvedStripe(difficulty, country, urls) {
   }
   function wrongGuess(msg) {
     mistakesLeft--;
