@@ -156,7 +156,7 @@
     const solved = boardTiles.filter(t => t.locked);
     shuffle(unsolved);
     boardTiles = unsolved.concat(solved);
-    renderBoard();
+    initialRenderBoard();
     showMessage("");
   });
   shareBtn?.addEventListener("click", onShare);
@@ -179,7 +179,7 @@
       currentTile.userCorrect = true;
       guessFeedback.textContent = "Correct!";
       guessFeedback.className = "guess-feedback correct";
-      renderBoard();
+      initialRenderBoard();
       maybeAutoLock(currentTile.country);
       setTimeout(closeTileModal, 350);
     } else {
@@ -372,7 +372,7 @@
     }
     boardTiles = shuffle(puzzle.tiles).map(t => ({ ...t, locked: !!t.locked }));
     solvedEl.innerHTML = "";
-    renderBoard();
+    initialRenderBoard();
     updateStatus();
   }
 
@@ -439,19 +439,28 @@
   }
 
   // ========= RENDER =========
-  function renderBoard() {
+  // ===== cache dom nodes =====
+  const tileEls = new Map(); // id -> HTMLElement
+
+  function initialRenderBoard() {
     boardEl.innerHTML = "";
+    tileEls.clear();
+
     for (const tile of boardTiles) {
       const tileEl = document.createElement("div");
       tileEl.className = "tile";
       tileEl.dataset.id = tile.id;
-      tileEl.classList.toggle("locked", !!tile.locked);
-      
-      tileEl.classList.toggle("locked", !!tile.locked);
+
+      // locked state
+      if (tile.locked) tileEl.classList.add("locked");
+
+      // image (don't recreate later; avoids layout thrash + decode)
       if (tile.url) {
         const img = document.createElement("img");
         img.src = tile.url;
         img.alt = "";
+        img.decoding = "async";
+        img.loading = "lazy";
         tileEl.appendChild(img);
       } else {
         const ph = document.createElement("div");
@@ -459,49 +468,32 @@
         ph.textContent = "No Image";
         tileEl.appendChild(ph);
       }
-      // Difficulty ring (tag or solved)
-      const ringColor = tile.userTag ? DIFF_COLORS[tile.userTag] : (tile.locked ? DIFF_COLORS[tile.difficulty] : null);
-      if (ringColor) {
-        tileEl.classList.add("ring");
-        tileEl.style.setProperty("--ring-color", ringColor);
-      }
-      // Corner tag button (to cycle difficulty tag)
-      const corner = document.createElement("button");
-      corner.type = "button";
-      corner.className = "corner";
-      corner.title = "Tag tile";
-      corner.style.background = tile.userTag ? DIFF_COLORS[tile.userTag] : "rgba(0,0,0,0.28)";
-      corner.addEventListener("click", (e) => {
-        e.stopPropagation();
-        onCornerTag(tile);
-      });
-      tileEl.appendChild(corner);
-      // Fullscreen icon button (opens Street View modal)
-      const fs = document.createElement("button");
-      fs.type = "button";
-      fs.className = "fullscreen-icon";
-      fs.title = "Fullscreen";
-      fs.textContent = "⛶";
-      fs.addEventListener("click", (e) => {
-        e.stopPropagation();
-        lastClickedTile = tile;
-        openTileModal(tile);
-      });
-      tileEl.appendChild(fs);
-      // Click to select/deselect, double-click to open fullscreen
-      tileEl.addEventListener("dblclick", () => {
-        lastClickedTile = tile;
-        openTileModal(tile);
-      });
-      tileEl.addEventListener("click", () => {
-        lastClickedTile = tile;
-        if (!tile.locked) toggleSelect(tile.id);
-      });
+
+      // ring
+      applyRing(tileEl, tile);
+
+      // interactions
+      tileEl.addEventListener("dblclick", () => { lastClickedTile = tile; openTileModal(tile); });
+      tileEl.addEventListener("click", () => { lastClickedTile = tile; if (!tile.locked) toggleSelect(tile.id); });
+
       boardEl.appendChild(tileEl);
+      tileEls.set(tile.id, tileEl);
     }
-    if (submittileEl) {
-      submittileEl.disabled = (selectedIds.size !== 4);
-    }
+
+    updateSelectionUI();
+    if (submitBtn) submitBtn.disabled = (selectedIds.size !== 4);
+  }
+
+  // Legacy function - now calls initialRenderBoard
+  function renderBoard() {
+    initialRenderBoard();
+  }
+
+  function applyRing(el, tile) {
+    const ringColor = tile.userTag ? DIFF_COLORS[tile.userTag] : (tile.locked ? DIFF_COLORS[tile.difficulty] : null);
+    el.classList.toggle("ring", !!ringColor);
+    if (ringColor) el.style.setProperty("--ring-color", ringColor);
+    else el.style.removeProperty("--ring-color");
   }
 
   // ========= TAGGING (Difficulty labeling) =========
@@ -519,22 +511,27 @@
     if (tile.userTag) {
       tagCounts[tile.userTag] += 1;
     }
-    renderBoard();
+    
+    // update ring + corner bg only (no full re-render)
+    const tileEl = tileEls.get(tile.id);
+    if (tileEl) {
+      applyRing(tileEl, tile);
+      const corner = tileEl.querySelector(".corner");
+      if (corner) corner.style.background = tile.userTag ? DIFF_COLORS[tile.userTag] : "rgba(0,0,0,0.28)";
+    }
   }
 
   // ========= SELECTION & GROUP SUBMISSION =========
   function toggleSelect(id) {
-    if (selectedIds.has(id)) {
-      selectedIds.delete(id);
-    } else if (selectedIds.size < 4) {
-      selectedIds.add(id);
-    }
-    renderBoard();
+    if (selectedIds.has(id)) selectedIds.delete(id);
+    else if (selectedIds.size < 4) selectedIds.add(id);
+    updateSelectionUI();
     showMessage("");
   }
+  
   function clearSelection() {
     selectedIds.clear();
-    renderBoard();
+    updateSelectionUI();
     showMessage("");
   }
   function onSubmitGroup() {
@@ -562,7 +559,7 @@
     tiles.forEach(t => t.locked = true);
     addSolvedStripe(tiles[0].difficulty, country, tiles.map(t => t.url));
     selectedIds.clear();
-    renderBoard();
+    initialRenderBoard();
     updateStatus();
     showMessage(solvedCountries.size === 4 ? "🎉 All groups found!" : `Correct! You found ${country}.`);
     if (solvedCountries.size === 4) {
@@ -599,7 +596,7 @@
   function revealSolution() {
     // Lock all remaining tiles and end the game
     boardTiles.forEach(t => t.locked = true);
-    renderBoard();
+    initialRenderBoard();
     showMessage("Out of mistakes!");
     updateStatus();
     // Game ended (failed) - enable sharing

@@ -45,23 +45,12 @@
   <div id="tile-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Tile viewer">
     <div class="modal-backdrop"></div>
     <div class="modal-body">
-      <button id="tile-close" class="close" aria-label="Close">×</button>
+      <button id="tile-close" class="close" aria-label="Close">x</button>
 
       <!-- Street View mounts here -->
       <div id="pano" class="pano"></div>
       <!-- Transparent overlay to block interaction -->
       <div id="freeze-overlay" class="freeze-overlay" aria-hidden="true"></div>
-
-      <!-- Country check UI -->
-      <form id="guess-form" class="guess-form">
-        <label>
-          <span>Country</span>
-          <input id="guess-input" name="guess" list="country-suggestions" autocomplete="off" required />
-          <datalist id="country-suggestions"></datalist>
-        </label>
-        <button class="btn primary" type="submit">Check</button>
-        <span id="guess-feedback" class="guess-feedback" aria-live="polite"></span>
-      </form>
     </div>
   </div>
 
