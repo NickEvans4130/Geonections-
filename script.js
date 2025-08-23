@@ -1,6 +1,9 @@
 (() => {
   // ========= CONFIG =========
   const STREET_VIEW_API_KEY = "AIzaSyAb2IZiueqc9Io7GSYAp2hy6nvvUL_WdJw"; // your key
+  
+  // Export for use in tileModal.js
+  window.STREET_VIEW_API_KEY = STREET_VIEW_API_KEY;
   const REQUIRE_COUNTRY_GUESS = true;
   const MAX_MISTAKES = 4;
   // Use Static Street View in fullscreen? (false = pano mode, locked POV)
@@ -9,11 +12,48 @@
   const DIFF_EMOJI  = { Easy: "🟨", Medium: "🟦", Hard: "🟪", Expert: "🟥" };
   const TAG_ORDER   = ["Easy", "Medium", "Hard", "Expert"];
 
+  // ========= SELECTION BUCKETS (4 buckets x 4 items) =========
+  function makeBuckets(capacity = 4, groups = 4) {
+    const buckets = Array.from({ length: groups }, () => new Set());
+    const index   = new Map(); // id -> bucketIdx
+
+    const locate     = (id) => (index.has(id) ? index.get(id) : -1);
+    const firstOpen  = () => buckets.findIndex(s => s.size < capacity);
+
+    function add(id) {
+      const i = firstOpen();
+      if (i === -1) return { ok: false, reason: 'full' }; // all 16 filled
+      buckets[i].add(id);
+      index.set(id, i);
+      return { ok: true, action: 'add', bucket: i };
+    }
+    function remove(id) {
+      const i = locate(id);
+      if (i === -1) return { ok: false, reason: 'absent' };
+      buckets[i].delete(id);
+      index.delete(id);
+      return { ok: true, action: 'remove', bucket: i };
+    }
+    function toggle(id, isLocked = false) { 
+      if (isLocked) return { ok: false, reason: 'locked' };
+      return index.has(id) ? remove(id) : add(id); 
+    }
+    function clearBucket(i) { for (const id of buckets[i]) index.delete(id); buckets[i].clear(); }
+    function clearAll() { index.clear(); buckets.forEach(s => s.clear()); }
+    function entries() { return buckets.map(s => [...s]); }
+    function firstFullIdx() { return buckets.findIndex(s => s.size === capacity); }
+
+    return {
+      buckets, index, capacity, groups,
+      locate, firstOpen, firstFullIdx,
+      add, remove, toggle, clearBucket, clearAll, entries
+    };
+  }
+
   // ========= STATE =========
   let allData = [];
   let boardTiles = [];
-  let solvedCountries = new Set();
-  let selectedIds = new Set();
+  const selections = makeBuckets(4, 4);
   let mistakesLeft = MAX_MISTAKES;
   let currentTile = null;
   let lastClickedTile = null;
@@ -40,17 +80,6 @@
     return el;
   }
 
-  const headerEl    = document.querySelector(".site-header");
-  const containerEl = document.querySelector(".container");
-  const controlsEl  = ensure(".controls",
-    `<div class="controls">
-       <button id="submit-btn" class="btn primary" type="button">Submit Group</button>
-       <button id="deselect-btn" class="btn" type="button">Deselect</button>
-       <button id="shuffle-btn" class="btn" type="button">Shuffle</button>
-       <button id="share-btn" class="btn" type="button" disabled>Share</button>
-     </div>`,
-    headerEl ? ".site-header" : null
-  );
   const messageEl = ensure("#message",
     `<div id="message" class="messages" aria-live="polite"></div>`,
     ".controls"
@@ -71,12 +100,7 @@
   const shuffleBtn  = $("#shuffle-btn");
   const shareBtn    = $("#share-btn");
 
-  const tileModal     = $("#tile-modal");
-  const tileClose     = $("#tile-close");
-  const panoEl        = $("#pano");
-  const freezeOverlay = $("#freeze-overlay");
-  const guessForm     = $("#guess-form");
-  const guessInput    = $("#guess-input");
+
   const guessFeedback = $("#guess-feedback");
   const suggestions   = $("#country-suggestions");
   const infoModal     = $("#info-modal");
@@ -161,36 +185,13 @@
   });
   shareBtn?.addEventListener("click", onShare);
 
-  tileClose?.addEventListener("click", closeTileModal);
-  tileModal?.addEventListener("click", (e) => { if (e.target === tileModal) closeTileModal(); });
+
   infoClose?.addEventListener("click", () => infoModal?.classList.add("hidden"));
   infoModal?.addEventListener("click", (e) => {
     if (e.target.classList.contains("modal-backdrop")) {
       infoModal.classList.add("hidden");
     }
   });
-  guessForm?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    if (!currentTile) return;
-    const guess = String(guessInput.value || "").trim();
-    if (!guess) return;
-    const ok = compareCountries(guess, currentTile.country);
-    if (ok) {
-      currentTile.userCorrect = true;
-      guessFeedback.textContent = "Correct!";
-      guessFeedback.className = "guess-feedback correct";
-      initialRenderBoard();
-      maybeAutoLock(currentTile.country);
-      setTimeout(closeTileModal, 350);
-    } else {
-      guessFeedback.textContent = "Incorrect.";
-      guessFeedback.className = "guess-feedback incorrect";
-      mistakesLeft--;
-      updateStatus();
-      if (mistakesLeft <= 0) revealSolution();
-    }
-  });
-
   // Press 'F' key to open Street View fullscreen on the last clicked tile
   window.addEventListener("keydown", (e) => {
     if ((e.key === "f" || e.key === "F") &&
@@ -340,10 +341,7 @@
     }
     return null;
   }
-  function fullscreenURLForTile(tile) {
-    const { baseW, baseH } = computeBestBaseSize();
-    return buildStreetViewURL(tile, { w: baseW, h: baseH, fov: 90 });
-  }
+
   function computeBestBaseSize() {
     const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
     const vw  = Math.max(1, window.innerWidth  || 800);
@@ -356,13 +354,11 @@
 
   // ========= GAME FLOW =========
   function startNewGame() {
-    solvedCountries.clear();
-    selectedIds.clear();
+    selections.clearAll();
     mistakesLeft = MAX_MISTAKES;
     tagStep = 0;
     tagCounts.Easy = tagCounts.Medium = tagCounts.Hard = tagCounts.Expert = 0;
     const puzzle = buildPuzzle16(allData);
-    debugBar.textContent = `Parsed: ${allData.length} → Built: ${puzzle.ok ? puzzle.tiles.length : 0}${loadedSource ? `  (file: ${loadedSource})` : ""}`;
     if (!puzzle.ok) {
       boardEl.innerHTML = "";
       solvedEl.innerHTML = "";
@@ -380,6 +376,7 @@
     const valid = (data || []).filter(t => t && t.country && t.difficulty && t.id);
     if (valid.length === 16) {
       // Exactly 16 valid tiles provided, use them directly
+      console.log("puzzle A", valid);
       return { ok: true, tiles: valid.map(t => ({ ...t, locked: false })) };
     }
     const difficulties = ["Easy", "Medium", "Hard", "Expert"];
@@ -411,6 +408,7 @@
         tiles.push(...sampleN(arr, 4).map(x => ({ ...x, locked: false })));
       }
       if (tiles.length === 16) {
+        console.log("puzzle B", tiles);
         return { ok: true, tiles };
       }
     }
@@ -426,6 +424,7 @@
       const chosen = countryQuads.slice(0, 4);
       const tiles = chosen.flatMap(([, arr]) => sampleN(arr, 4)).slice(0, 16).map(x => ({ ...x, locked: false }));
       if (tiles.length === 16) {
+        console.log("puzzle C", tiles);
         return { ok: true, tiles };
       }
     }
@@ -474,14 +473,27 @@
 
       // interactions
       tileEl.addEventListener("dblclick", () => { lastClickedTile = tile; openTileModal(tile); });
-      tileEl.addEventListener("click", () => { lastClickedTile = tile; if (!tile.locked) toggleSelect(tile.id); });
+      tileEl.addEventListener("click", () => {
+        lastClickedTile = tile;
+        if (tile.locked) return;
+        const res = selections.toggle(tile.id, tile.locked);
+        if (!res.ok) {
+          if (res.reason === 'full') {
+            showMessage("All groups are full!", true);
+          } else if (res.reason === 'locked') {
+            showMessage("This tile is already solved!", true);
+          }
+        }
+        updateSelectionUI();
+        showMessage("");
+      });
 
       boardEl.appendChild(tileEl);
       tileEls.set(tile.id, tileEl);
     }
 
     updateSelectionUI();
-    if (submitBtn) submitBtn.disabled = (selectedIds.size !== 4);
+    if (submitBtn) submitBtn.disabled = (selections.firstFullIdx() === -1);
   }
 
   // Legacy function - now calls initialRenderBoard
@@ -496,73 +508,78 @@
     else el.style.removeProperty("--ring-color");
   }
 
-  // ========= TAGGING (Difficulty labeling) =========
-  function onCornerTag(tile) {
-    const prev = tile.userTag;
-    if (prev) {
-      tagCounts[prev] = Math.max(0, tagCounts[prev] - 1);
-    }
-    let tag = TAG_ORDER[tagStep] || null;
-    if (tag && tagCounts[tag] >= 4) {
-      tagStep = Math.min(TAG_ORDER.length, tagStep + 1);
-      tag = TAG_ORDER[tagStep] || null;
-    }
-    tile.userTag = tag || null;
-    if (tile.userTag) {
-      tagCounts[tile.userTag] += 1;
+  // ========= SELECTION & GROUP SUBMISSION =========
+  function updateSelectionUI() {
+    // clear all selection classes
+    for (const [, el] of tileEls) {
+      el.classList.remove('selected', 'g1', 'g2', 'g3', 'g4');
     }
     
-    // update ring + corner bg only (no full re-render)
-    const tileEl = tileEls.get(tile.id);
-    if (tileEl) {
-      applyRing(tileEl, tile);
-      const corner = tileEl.querySelector(".corner");
-      if (corner) corner.style.background = tile.userTag ? DIFF_COLORS[tile.userTag] : "rgba(0,0,0,0.28)";
-    }
-  }
-
-  // ========= SELECTION & GROUP SUBMISSION =========
-  function toggleSelect(id) {
-    if (selectedIds.has(id)) selectedIds.delete(id);
-    else if (selectedIds.size < 4) selectedIds.add(id);
-    updateSelectionUI();
-    showMessage("");
+    // Remove selections from locked tiles and reapply from buckets
+    const validSelections = [];
+    selections.entries().forEach((ids, i) => {
+      const validIds = ids.filter(id => {
+        const tile = boardTiles.find(t => t.id === id);
+        if (tile && tile.locked) {
+          // Remove from bucket if tile is now locked
+          selections.remove(id);
+          return false;
+        }
+        return true;
+      });
+      validSelections.push({ bucket: i, ids: validIds });
+    });
+    
+    // Reapply valid selections
+    validSelections.forEach(({ bucket, ids }) => {
+      const cls = `g${bucket + 1}`;
+      ids.forEach(id => {
+        const el = tileEls.get(id);
+        if (el) { el.classList.add('selected', cls); }
+      });
+    });
+    
+    // enable submit if *any* bucket is full
+    if (submitBtn) submitBtn.disabled = (selections.firstFullIdx() === -1);
   }
   
   function clearSelection() {
-    selectedIds.clear();
+    selections.clearAll();
     updateSelectionUI();
     showMessage("");
   }
   function onSubmitGroup() {
-    if (selectedIds.size !== 4) return;
-    const sel = boardTiles.filter(t => selectedIds.has(t.id));
+    const i = selections.firstFullIdx();
+    if (i === -1) return; // nothing ready
+    const ids = [...selections.buckets[i]];
+    const sel = boardTiles.filter(t => ids.includes(t.id));
     const countries = [...new Set(sel.map(t => t.country))];
-    if (countries.length !== 1) {
-      return wrongGuess("Those 4 images aren't all from the same country.");
-    }
+    if (countries.length !== 1) return wrongGuess("those 4 aren't the same country.");
+
     const country = countries[0];
-    if (solvedCountries.has(country)) {
-      return wrongGuess("That country is already solved.");
-    }
-    if (REQUIRE_COUNTRY_GUESS) {
-      promptCountryGuess(country).then(ok => {
-        if (ok) lockGroup(country, sel);
-        else wrongGuess("Country guess incorrect for that group.");
-      });
-    } else {
+
+    const finalize = () => {
       lockGroup(country, sel);
+      selections.clearBucket(i);     // free that bucket
+      updateSelectionUI();
+    };
+
+    if (REQUIRE_COUNTRY_GUESS) {
+      promptCountryGuess(country).then(ok => ok ? finalize() : wrongGuess("country guess incorrect."));
+    } else {
+      finalize();
     }
   }
   function lockGroup(country, tiles) {
-    solvedCountries.add(country);
     tiles.forEach(t => t.locked = true);
     addSolvedStripe(tiles[0].difficulty, country, tiles.map(t => t.url));
-    selectedIds.clear();
-    initialRenderBoard();
     updateStatus();
-    showMessage(solvedCountries.size === 4 ? "🎉 All groups found!" : `Correct! You found ${country}.`);
-    if (solvedCountries.size === 4) {
+    
+    // Check if all tiles are now locked (game solved)
+    const allSolved = boardTiles.every(t => t.locked);
+    showMessage(allSolved ? "🎉 All groups found!" : `Correct! You found ${country}.`);
+    
+    if (allSolved) {
       // Game solved - enable sharing
       shareBtn?.removeAttribute("disabled");
     }
@@ -596,7 +613,8 @@
   function revealSolution() {
     // Lock all remaining tiles and end the game
     boardTiles.forEach(t => t.locked = true);
-    initialRenderBoard();
+    selections.clearAll();
+    updateSelectionUI();
     showMessage("Out of mistakes!");
     updateStatus();
     // Game ended (failed) - enable sharing
@@ -604,7 +622,8 @@
   }
   function updateStatus() {
     if (groupsRemainingEl) {
-      groupsRemainingEl.textContent = `Groups: ${4 - solvedCountries.size}`;
+      const solvedGroups = Math.floor(boardTiles.filter(t => t.locked).length / 4);
+      groupsRemainingEl.textContent = `Groups: ${4 - solvedGroups}`;
     }
     if (mistakesLeftEl) {
       mistakesLeftEl.textContent = `Mistakes: ${mistakesLeft}`;
@@ -624,162 +643,8 @@
     }
   }
 
-  // ========= FULLSCREEN STREET VIEW MODAL =========
-  let mapsReadyPromise = null;
-  let pano = null;
-  let blockKeys = null;
-  function ensureMapsJS() {
-    if (window.google?.maps?.StreetViewPanorama) {
-      return Promise.resolve();
-    }
-    if (!mapsReadyPromise) {
-      mapsReadyPromise = new Promise((resolve, reject) => {
-        const cb = "__g_cb_" + Math.random().toString(36).slice(2);
-        window[cb] = () => {
-          resolve();
-          // Clean up the callback global
-          setTimeout(() => { try { delete window[cb]; } catch {} }, 0);
-        };
-        const script = document.createElement("script");
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(STREET_VIEW_API_KEY)}&callback=${cb}&v=weekly`;
-        script.async = true;
-        script.defer = true;
-        script.onerror = () => reject(new Error("Maps JS failed"));
-        document.head.appendChild(script);
-      });
-    }
-    return mapsReadyPromise;
-  }
-  async function openTileModal(tile) {
-    // Populate country suggestions for guess input (all distinct countries on board)
-    suggestions.innerHTML = "";
-    for (const c of [...new Set(boardTiles.map(t => t.country))]) {
-      const opt = document.createElement("option");
-      opt.value = c;
-      suggestions.appendChild(opt);
-      const code = nameOrCodeToCode(c);
-      if (code) {
-        const opt2 = document.createElement("option");
-        opt2.value = code;
-        suggestions.appendChild(opt2);
-      }
-    }
-    guessInput.value = "";
-    guessFeedback.textContent = "";
-    guessFeedback.className = "guess-feedback";
-    tileModal.classList.remove("hidden");
-    try {
-      if (tileModal.requestFullscreen) {
-        await tileModal.requestFullscreen();
-      }
-    } catch (_) {}
-    panoEl.innerHTML = "";
-    currentTile = tile;
-    if (USE_STATIC_IN_VIEWER) {
-      // Show a static Street View image (no interaction)
-      const img = document.createElement("img");
-      img.alt = "";
-      img.src = fullscreenURLForTile(tile);
-      img.style.cssText = "position:absolute; inset:0; width:100%; height:100%; object-fit:cover;";
-      panoEl.appendChild(img);
-      if (freezeOverlay) freezeOverlay.style.display = "none";
-      setTimeout(() => guessInput.focus(), 50);
-      return;
-    }
-    // Interactive panorama (locked controls)
-    try {
-      await ensureMapsJS();
-      const opts = {
-        addressControl: false,
-        linksControl: false,
-        clickToGo: false,
-        zoomControl: false,
-        fullscreenControl: false,
-        motionTracking: false,
-        motionTrackingControl: false,
-        disableDefaultUI: true
-      };
-      if (tile.panoId) {
-        opts.pano = tile.panoId;
-      } else {
-        opts.position = { lat: tile.lat, lng: tile.lng };
-      }
-      pano = new google.maps.StreetViewPanorama(panoEl, opts);
-      const fixedPov = { heading: tile.heading || 0, pitch: tile.pitch || 0 };
-      pano.setPov(fixedPov);
-      const fixedZoom = pano.getZoom();
-      google.maps.event.addListener(pano, "pov_changed", () => {
-        const p = pano.getPov();
-        if (Math.abs(p.heading - fixedPov.heading) > 0.1 || Math.abs(p.pitch - fixedPov.pitch) > 0.1) {
-          pano.setPov(fixedPov);
-        }
-      });
-      google.maps.event.addListener(pano, "zoom_changed", () => {
-        if (pano.getZoom() !== fixedZoom) {
-          pano.setZoom(fixedZoom);
-        }
-      });
-      google.maps.event.addListener(pano, "position_changed", () => {
-        if (tile.panoId) {
-          pano.setPano(tile.panoId);
-        } else {
-          pano.setPosition({ lat: tile.lat, lng: tile.lng });
-        }
-      });
-      // Block arrow keys and other controls while in pano
-      blockKeys = (e) => {
-        const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "+", "-", "=", "_"];
-        if (keys.includes(e.key)) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      };
-      window.addEventListener("keydown", blockKeys, { capture: true });
-      // Show overlay to prevent dragging the view
-      if (freezeOverlay) {
-        freezeOverlay.style.display = "block";
-        freezeOverlay.style.pointerEvents = "auto";
-      }
-      // Refresh pano size after entering fullscreen or resizing
-      const refresh = () => {
-        try {
-          google.maps.event.trigger(pano, "resize");
-        } catch (_) {}
-      };
-      setTimeout(refresh, 80);
-      setTimeout(refresh, 200);
-      window.addEventListener("resize", refresh);
-      document.addEventListener("fullscreenchange", refresh, { passive: true });
-    } catch (err) {
-      // Fallback: just show static image if Google Maps JS fails
-      const img = document.createElement("img");
-      img.alt = "";
-      img.src = fullscreenURLForTile(tile);
-      img.style.cssText = "position:absolute; inset:0; width:100%; height:100%; object-fit:cover;";
-      panoEl.appendChild(img);
-      if (freezeOverlay) freezeOverlay.style.display = "none";
-      console.warn("Viewer fallback:", err);
-    }
-    setTimeout(() => guessInput.focus(), 50);
-  }
-  function closeTileModal() {
-    tileModal.classList.add("hidden");
-    if (document.fullscreenElement && document.exitFullscreen) {
-      document.exitFullscreen().catch(() => {});
-    }
-    if (freezeOverlay) {
-      freezeOverlay.style.display = "none";
-    }
-    if (blockKeys) {
-      try {
-        window.removeEventListener("keydown", blockKeys, { capture: true });
-      } catch (_) {}
-      blockKeys = null;
-    }
-    pano = null;
-    panoEl.innerHTML = "";
-    currentTile = null;
-  }
+
+
 
   // ========= SHARE (RESULTS) =========
   function tilesForShareCanonical() {
@@ -808,7 +673,8 @@
       lines.push(row);
     }
     const mistakesUsed = MAX_MISTAKES - mistakesLeft;
-    const status = solvedCountries.size === 4 ? "Solved" : "Ended";
+    const allSolved = boardTiles.every(t => t.locked);
+    const status = allSolved ? "Solved" : "Ended";
     return `Geonections — ${status} (${mistakesUsed} mistakes)\n${lines.join("\n")}`;
   }
   async function onShare() {
