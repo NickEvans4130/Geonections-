@@ -367,7 +367,7 @@
       boardEl.innerHTML = "";
       solvedEl.innerHTML = "";
       updateStatus();
-      showMessage(puzzle.error || "Not enough valid items to build a 4×4 board.", true);
+      showMessage(puzzle.error || "Not enough valid items to build a 4x4 board.", true);
       return;
     }
     boardTiles = shuffle(puzzle.tiles).map(t => ({ ...t, locked: !!t.locked }));
@@ -435,35 +435,35 @@
       console.warn("[Geonections] Using final fallback — check your JSON tags (country/difficulty).");
       return { ok: true, tiles: fallback };
     }
-    return { ok: false, error: "Not enough valid items to build a 4×4 board. Check JSON tags for country/difficulty." };
+    return { ok: false, error: "Not enough valid items to build a 4x4 board. Check JSON tags for country/difficulty." };
   }
 
   // ========= RENDER =========
   function renderBoard() {
     boardEl.innerHTML = "";
     for (const tile of boardTiles) {
-      const btn = document.createElement("button");
-      btn.className = "tile";
-      btn.type = "button";
-      btn.dataset.id = tile.id;
-      btn.setAttribute("aria-pressed", selectedIds.has(tile.id) ? "true" : "false");
-      btn.classList.toggle("locked", !!tile.locked);
+      const tileEl = document.createElement("div");
+      tileEl.className = "tile";
+      tileEl.dataset.id = tile.id;
+      tileEl.classList.toggle("locked", !!tile.locked);
+      
+      tileEl.classList.toggle("locked", !!tile.locked);
       if (tile.url) {
         const img = document.createElement("img");
         img.src = tile.url;
         img.alt = "";
-        btn.appendChild(img);
+        tileEl.appendChild(img);
       } else {
         const ph = document.createElement("div");
         ph.className = "noimg";
         ph.textContent = "No Image";
-        btn.appendChild(ph);
+        tileEl.appendChild(ph);
       }
       // Difficulty ring (tag or solved)
       const ringColor = tile.userTag ? DIFF_COLORS[tile.userTag] : (tile.locked ? DIFF_COLORS[tile.difficulty] : null);
       if (ringColor) {
-        btn.classList.add("ring");
-        btn.style.setProperty("--ring-color", ringColor);
+        tileEl.classList.add("ring");
+        tileEl.style.setProperty("--ring-color", ringColor);
       }
       // Corner tag button (to cycle difficulty tag)
       const corner = document.createElement("button");
@@ -475,7 +475,7 @@
         e.stopPropagation();
         onCornerTag(tile);
       });
-      btn.appendChild(corner);
+      tileEl.appendChild(corner);
       // Fullscreen icon button (opens Street View modal)
       const fs = document.createElement("button");
       fs.type = "button";
@@ -487,22 +487,21 @@
         lastClickedTile = tile;
         openTileModal(tile);
       });
-      btn.appendChild(fs);
+      tileEl.appendChild(fs);
       // Click to select/deselect, double-click to open fullscreen
-      btn.addEventListener("dblclick", () => {
+      tileEl.addEventListener("dblclick", () => {
         lastClickedTile = tile;
         openTileModal(tile);
       });
-      btn.addEventListener("click", () => {
+      tileEl.addEventListener("click", () => {
         lastClickedTile = tile;
         if (!tile.locked) toggleSelect(tile.id);
       });
-      boardEl.appendChild(btn);
+      boardEl.appendChild(tileEl);
     }
-    if (submitBtn) {
-      submitBtn.disabled = (selectedIds.size !== 4);
+    if (submittileEl) {
+      submittileEl.disabled = (selectedIds.size !== 4);
     }
-    fitBoardToViewport();
   }
 
   // ========= TAGGING (Difficulty labeling) =========
@@ -543,7 +542,7 @@
     const sel = boardTiles.filter(t => selectedIds.has(t.id));
     const countries = [...new Set(sel.map(t => t.country))];
     if (countries.length !== 1) {
-      return wrongGuess("Those 4 images aren’t all from the same country.");
+      return wrongGuess("Those 4 images aren't all from the same country.");
     }
     const country = countries[0];
     if (solvedCountries.has(country)) {
@@ -567,7 +566,7 @@
     updateStatus();
     showMessage(solvedCountries.size === 4 ? "🎉 All groups found!" : `Correct! You found ${country}.`);
     if (solvedCountries.size === 4) {
-      // Game solved – enable sharing
+      // Game solved - enable sharing
       shareBtn?.removeAttribute("disabled");
     }
   }
@@ -603,7 +602,7 @@
     renderBoard();
     showMessage("Out of mistakes!");
     updateStatus();
-    // Game ended (failed) – enable sharing
+    // Game ended (failed) - enable sharing
     shareBtn?.removeAttribute("disabled");
   }
   function updateStatus() {
@@ -890,30 +889,4 @@
       resolve(compareCountries(guess, correctCountry));
     });
   }
-
-  // ========= RESPONSIVE GRID SIZING =========
-  function fitBoardToViewport() {
-    try {
-      const COLS = 4, ROWS = 4;
-      const styles = getComputedStyle(boardEl);
-      const gap = parseFloat(styles.gap || styles.columnGap || 8);
-      const vw = window.innerWidth || document.documentElement.clientWidth;
-      const vh = window.innerHeight || document.documentElement.clientHeight;
-      const availW = Math.max(200, containerEl?.clientWidth || vw);
-      const headerH = headerEl?.offsetHeight || 56;
-      const controlsH = controlsEl?.offsetHeight || 0;
-      const misc = 8; // small padding
-      const availH = Math.max(200, vh - headerH - controlsH - misc);
-      const tileW_fromWidth  = (availW - gap * (COLS - 1)) / COLS;
-      const tileH_fromHeight = (availH - gap * (ROWS - 1)) / ROWS;
-      const tileW_fromHeight = tileH_fromHeight * (16 / 10);  // maintain 16:10 aspect ratio
-      let tileW = Math.floor(Math.min(tileW_fromWidth, tileW_fromHeight));
-      tileW = Math.max(160, tileW);
-      boardEl.style.gridTemplateColumns = `repeat(${COLS}, ${tileW}px)`;
-    } catch (_) {
-      // ignore errors (in case boardEl not yet in DOM)
-    }
-  }
-  window.addEventListener("resize", fitBoardToViewport);
-  document.addEventListener("DOMContentLoaded", fitBoardToViewport);
 })();
