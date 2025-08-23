@@ -12,7 +12,7 @@
     <div class="container header-inner">
       <div class="tabs">
         <h1 class="logo">Geonections</h1>
-        <button id="past-btn" class="btn nav-btn" type="button">Past Geonections</button>
+        <!-- <button id="past-btn" class="btn nav-btn" type="button">Past Geonections</button> -->
       </div>
       <div class="status">
         <span id="groups-remaining">Groups: 4</span>
@@ -23,8 +23,7 @@
 
   <main class="container">
     <div class="controls">
-      <button id="submit-btn" class="btn primary" type="button">Submit Group</button>
-      <button id="deselect-btn" class="btn" type="button">Deselect</button>
+      <button id="submit-btn" class="btn primary" type="button" disabled>Submit</button>
       <button id="shuffle-btn" class="btn" type="button">Shuffle</button>
       <button id="share-btn" class="btn" type="button" disabled>Share</button>
     </div>
@@ -36,39 +35,28 @@
       <div id="solved"></div>
     </section>
 
-    <footer class="site-footer">
+    <!-- <footer class="site-footer">
       <div>© <span id="year">2025</span> Geonections</div>
-    </footer>
+    </footer> -->
   </main>
 
   <!-- Fullscreen Street View modal -->
   <div id="tile-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Tile viewer">
     <div class="modal-backdrop"></div>
     <div class="modal-body">
-      <button id="tile-close" class="close" aria-label="Close">×</button>
+      <button id="tile-close" class="close" aria-label="Close">x</button>
 
       <!-- Street View mounts here -->
       <div id="pano" class="pano"></div>
       <!-- Transparent overlay to block interaction -->
       <div id="freeze-overlay" class="freeze-overlay" aria-hidden="true"></div>
-
-      <!-- Country check UI -->
-      <form id="guess-form" class="guess-form">
-        <label>
-          <span>Country</span>
-          <input id="guess-input" name="guess" list="country-suggestions" autocomplete="off" required />
-          <datalist id="country-suggestions"></datalist>
-        </label>
-        <button class="btn primary" type="submit">Check</button>
-        <span id="guess-feedback" class="guess-feedback" aria-live="polite"></span>
-      </form>
     </div>
   </div>
 
   <div id="info-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Game instructions">
     <div class="modal-backdrop"></div>
     <div class="info-content">
-      <button id="info-close" class="close" aria-label="Close info card">×</button>
+      <button id="info-close" class="close" aria-label="Close info card">x</button>
       <h2>Welcome to Geonections</h2>
       <ul>
         <li>You type your guess after selecting four tiles.</li>
@@ -79,6 +67,7 @@
     </div>
   </div>
 
+  <script src="./tileModal.js" defer></script>
   <script src="./script.js" defer></script>
 </body>
 </html>
