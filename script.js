@@ -22,6 +22,10 @@
     let firstOpen    = () => buckets.findIndex(s => s.size < capacity);
 
     function add(id) {
+      // Check if we already have 4 total tiles selected
+      const totalSelected = index.size;
+      if (totalSelected >= 4) return { ok: false, reason: 'max_selection' };
+      
       const i = firstOpen();
       if (i === -1) return { ok: false, reason: 'full' }; // all 16 filled
       buckets[i].add(id);
@@ -43,10 +47,11 @@
     function clearAll() { index.clear(); buckets.forEach(s => s.clear()); }
     function entries() { return buckets.map(s => [...s]); }
     function firstFullIdx() { return buckets.findIndex(s => s.size === capacity); }
+    function hasExactlyFour() { return index.size === 4; }
 
     return {
       buckets, index, capacity, groups,
-      locate, firstOpen, firstFullIdx,
+      locate, firstOpen, firstFullIdx, hasExactlyFour,
       add, remove, toggle, clearBucket, clearAll, entries,
       updateFirstOpen: (newFirstOpen) => { firstOpen = newFirstOpen; }
     };
@@ -189,15 +194,22 @@
       }
     });
     
+    console.log(`Shuffling ${unsolvedTiles.length} unsolved tiles out of ${boardTiles.length} total tiles`);
+    
     // Shuffle only the unsolved tiles
     shuffle(unsolvedTiles);
     
-    // Put shuffled unsolved tiles back in their original unsolved positions
-    unsolvedTiles.forEach((tile, i) => {
-      boardTiles[unsolvedIndices[i]] = tile;
+    // Place shuffled unsolved tiles back into any available unsolved positions
+    let unsolvedIndex = 0;
+    boardTiles.forEach((tile, i) => {
+      if (!tile.locked) {
+        boardTiles[i] = unsolvedTiles[unsolvedIndex];
+        unsolvedIndex++;
+      }
     });
     
-    initialRenderBoard();
+    // Move DOM elements without re-rendering
+    shuffleBoardDOM();
     showMessage("");
   });
   shareBtn?.addEventListener("click", onShare);
@@ -387,6 +399,7 @@
     mistakesLeft = MAX_MISTAKES;
     tagStep = 0;
     tagCounts.Easy = tagCounts.Medium = tagCounts.Hard = tagCounts.Expert = 0;
+    gameActuallySolved = false;
     const puzzle = buildPuzzle16(allData);
     if (!puzzle.ok) {
       boardEl.innerHTML = "";
@@ -491,8 +504,8 @@
         img.loading = "lazy";
         tileEl.appendChild(img);
         
-        // Dev mode: show country code overlay
-        if (DEV_MODE) {
+        // Show country code overlay in dev mode or when tile is solved
+        if (DEV_MODE || tile.locked) {
           const countryCode = document.createElement("div");
           countryCode.className = "dev-country-code";
           countryCode.textContent = tile.country;
@@ -510,7 +523,7 @@
 
       // interactions
       tileEl.addEventListener("dblclick", () => { lastClickedTile = tile; openTileModal(tile); });
-      tileEl.addEventListener("click", () => {
+      tileEl.addEventListener("mousedown", () => {
         lastClickedTile = tile;
         if (tile.locked) return;
         
@@ -527,10 +540,11 @@
             showMessage("All groups are full!", true);
           } else if (res.reason === 'locked') {
             showMessage("This tile is already solved!", true);
+          } else if (res.reason === 'max_selection') {
+            showMessage("You can only select 4 tiles at a time!", true);
           }
         }
         updateSelectionUI();
-        showMessage("");
       });
 
       boardEl.appendChild(tileEl);
@@ -544,6 +558,75 @@
   // Legacy function - now calls initialRenderBoard
   function renderBoard() {
     initialRenderBoard();
+  }
+
+  function shuffleBoardDOM() {
+    // Get all tile elements in their current DOM order
+    const currentTileElements = Array.from(boardEl.children);
+    
+    // Create a map of tile ID to element for quick lookup
+    const tileElementMap = new Map();
+    currentTileElements.forEach(el => {
+      tileElementMap.set(el.dataset.id, el);
+    });
+    
+    console.log(`Moving ${currentTileElements.length} DOM elements to match shuffled order`);
+    
+    // Reorder the DOM elements to match the shuffled boardTiles array
+    boardTiles.forEach((tile, index) => {
+      const tileEl = tileElementMap.get(tile.id);
+      if (tileEl) {
+        // Move the element to the correct position without recreating it
+        boardEl.appendChild(tileEl);
+      } else {
+        console.warn(`Could not find DOM element for tile ${tile.id}`);
+      }
+    });
+    
+    // Update the tileEls map to maintain the correct order
+    tileEls.clear();
+    Array.from(boardEl.children).forEach(el => {
+      tileEls.set(el.dataset.id, el);
+    });
+    
+    
+    // Update UI without re-rendering
+    updateSelectionUI();
+    if (submitBtn) submitBtn.disabled = (selections.firstFullIdx() === -1);
+  }
+
+  function reorderBoardDOM() {
+    // Get all tile elements in their current DOM order
+    const currentTileElements = Array.from(boardEl.children);
+    
+    // Create a map of tile ID to element for quick lookup
+    const tileElementMap = new Map();
+    currentTileElements.forEach(el => {
+      tileElementMap.set(el.dataset.id, el);
+    });
+    
+    
+    // Reorder the DOM elements to match the new boardTiles array
+    boardTiles.forEach((tile, index) => {
+      const tileEl = tileElementMap.get(tile.id);
+      if (tileEl) {
+        // Move the element to the correct position without recreating it
+        boardEl.appendChild(tileEl);
+      } else {
+        console.warn(`Could not find DOM element for tile ${tile.id}`);
+      }
+    });
+    
+    // Update the tileEls map to maintain the correct order
+    tileEls.clear();
+    Array.from(boardEl.children).forEach(el => {
+      tileEls.set(el.dataset.id, el);
+    });
+    
+    
+    // Update UI without re-rendering
+    updateSelectionUI();
+    if (submitBtn) submitBtn.disabled = (selections.firstFullIdx() === -1);
   }
 
   function applyRing(el, tile) {
@@ -573,6 +656,8 @@
   }
 
   // ========= SELECTION & GROUP SUBMISSION =========
+
+
   function updateSelectionUI() {
     // Update the selection logic to skip solved categories
     updateSelectionLogic();
@@ -619,6 +704,8 @@
       }
     });
     
+
+    
     // enable submit if *any* bucket is full
     if (submitBtn) submitBtn.disabled = (selections.firstFullIdx() === -1);
   }
@@ -626,6 +713,7 @@
   function clearSelection() {
     selections.clearAll();
     updateSelectionUI();
+    // Clear any progress messages
     showMessage("");
   }
   function onSubmitGroup() {
@@ -634,7 +722,24 @@
     const ids = [...selections.buckets[i]];
     const sel = boardTiles.filter(t => ids.includes(t.id));
     const countries = [...new Set(sel.map(t => t.country))];
-    if (countries.length !== 1) return wrongGuess("those 4 aren't the same country.");
+    
+    if (countries.length !== 1) {
+      // Check for "one away" or "two away" scenarios
+      const countryCounts = {};
+      sel.forEach(tile => {
+        countryCounts[tile.country] = (countryCounts[tile.country] || 0) + 1;
+      });
+      
+      const maxCount = Math.max(...Object.values(countryCounts));
+      
+      if (maxCount === 3) {
+        return wrongGuess("One away!");
+      } else if (maxCount === 2) {
+        return wrongGuess("Two away!");
+      } else {
+        return wrongGuess("Those 4 aren't the same country.");
+      }
+    }
 
     const country = countries[0];
 
@@ -654,6 +759,18 @@
     tiles.forEach(t => t.locked = true);
     addSolvedStripe(tiles[0].difficulty, country, tiles.map(t => t.url));
     
+    // Add country codes to solved tiles
+    tiles.forEach(tile => {
+      const tileEl = tileEls.get(tile.id);
+      if (tileEl) {
+        addCountryCodeToTile(tileEl, tile.country);
+      }
+    });
+    
+    // Show success message
+    const difficulty = tiles[0].difficulty;
+    showMessage(`Correct! 🎉`, false);
+    
     // Reorder board: move solved group to next available row
     reorderBoardAfterSolve();
     
@@ -663,8 +780,11 @@
     const allSolved = boardTiles.every(t => t.locked);
     
     if (allSolved) {
-      // Game solved - enable sharing
+      // Game actually solved - set flag and show congratulations
+      gameActuallySolved = true;
+      showMessage("🎉 Congratulations! You solved the puzzle! 🎉", false);
       shareBtn?.removeAttribute("disabled");
+      showCongratulationsOverlay();
     }
   }
   
@@ -699,8 +819,8 @@
     // Update the boardTiles array
     boardTiles = newBoardTiles;
     
-    // Re-render the board to show new order
-    initialRenderBoard();
+    // Reorder DOM elements without re-rendering
+    reorderBoardDOM();
   }
   
   function addSolvedStripe(difficulty, country, urls) {
@@ -718,8 +838,23 @@
     updateSelectionUI();
     showMessage("Out of mistakes!");
     updateStatus();
+    
+    // Add country codes to all tiles since they're now revealed
+    boardTiles.forEach(tile => {
+      const tileEl = tileEls.get(tile.id);
+      if (tileEl) {
+        addCountryCodeToTile(tileEl, tile.country);
+      }
+    });
+    
     // Game ended (failed) - enable sharing
     shareBtn?.removeAttribute("disabled");
+    
+    // Only show congratulations if the game was actually solved, not just failed
+    const allSolved = boardTiles.every(t => t.locked);
+    if (allSolved && gameActuallySolved) {
+      showCongratulationsOverlay();
+    }
   }
   function updateStatus() {
     if (groupsRemainingEl) {
@@ -888,9 +1023,147 @@
   }
   function promptCountryGuess(correctCountry) {
     return new Promise(resolve => {
-      const guess = window.prompt("Type the country (name or 2-letter code):");
-      if (guess == null) return resolve(false);
-      resolve(compareCountries(guess, correctCountry));
+      // Create overlay
+      const overlay = document.createElement("div");
+      overlay.className = "country-guess-overlay";
+      
+      // Create modal content
+      const modal = document.createElement("div");
+      modal.className = "country-guess-modal";
+      
+      const title = document.createElement("h3");
+      title.className = "country-guess-title";
+      title.textContent = "Enter the country name or 2-letter code";
+      
+      const input = document.createElement("input");
+      input.className = "country-guess-input";
+      input.type = "text";
+      input.placeholder = "e.g., France or FR";
+      input.autocomplete = "off";
+      
+      const buttonContainer = document.createElement("div");
+      buttonContainer.className = "country-guess-buttons";
+      
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "country-guess-btn";
+      cancelBtn.textContent = "Cancel";
+      
+      const submitBtn = document.createElement("button");
+      submitBtn.className = "country-guess-btn primary";
+      submitBtn.textContent = "Submit";
+      
+      // Add event listeners
+      const cleanup = () => {
+        document.body.removeChild(overlay);
+        resolve(false);
+      };
+      
+      cancelBtn.addEventListener("click", cleanup);
+      
+      const submitGuess = () => {
+        const guess = input.value.trim();
+        if (guess) {
+          document.body.removeChild(overlay);
+          resolve(compareCountries(guess, correctCountry));
+        }
+      };
+      
+      submitBtn.addEventListener("click", submitGuess);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          submitGuess();
+        } else if (e.key === "Escape") {
+          cleanup();
+        }
+      });
+      
+      // Focus input and select text
+      setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 100);
+      
+      // Assemble and show
+      buttonContainer.appendChild(cancelBtn);
+      buttonContainer.appendChild(submitBtn);
+      modal.appendChild(title);
+      modal.appendChild(input);
+      modal.appendChild(buttonContainer);
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
     });
+  }
+
+  function showCongratulationsOverlay() {
+    // Create overlay
+    const overlay = document.createElement("div");
+    overlay.className = "congrats-overlay";
+    
+    // Create modal content
+    const modal = document.createElement("div");
+    modal.className = "congrats-modal";
+    
+    const icon = document.createElement("span");
+    icon.className = "congrats-icon";
+    icon.textContent = "🎉";
+    
+    const title = document.createElement("h2");
+    title.className = "congrats-title";
+    title.textContent = "Congratulations!";
+    
+    const message = document.createElement("p");
+    message.className = "congrats-message";
+    const mistakesUsed = MAX_MISTAKES - mistakesLeft;
+    message.textContent = `You've solved the puzzle in ${mistakesUsed} mistakes! Share your results with friends.`;
+    
+    const shareBtn = document.createElement("button");
+    shareBtn.className = "congrats-share-btn";
+    shareBtn.textContent = "Share Results";
+    
+    const copyFeedback = document.createElement("div");
+    copyFeedback.className = "congrats-copy-feedback";
+    copyFeedback.textContent = "✓ Copied to clipboard!";
+    
+    const dismissBtn = document.createElement("button");
+    dismissBtn.className = "congrats-dismiss-btn";
+    dismissBtn.textContent = "Dismiss";
+    
+    // Add event listener for share button
+    shareBtn.addEventListener("click", () => {
+      onShare();
+      // Show copy feedback
+      copyFeedback.classList.add("show");
+      // Hide feedback after 3 seconds
+      setTimeout(() => {
+        copyFeedback.classList.remove("show");
+      }, 3000);
+    });
+    
+    // Add event listener for dismiss button
+    dismissBtn.addEventListener("click", () => {
+      document.body.removeChild(overlay);
+    });
+    
+    // Assemble and show
+    modal.appendChild(icon);
+    modal.appendChild(title);
+    modal.appendChild(message);
+    modal.appendChild(shareBtn);
+    modal.appendChild(copyFeedback);
+    modal.appendChild(dismissBtn);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
+
+  function addCountryCodeToTile(tileEl, country) {
+    // Check if country code already exists
+    if (tileEl.querySelector('.dev-country-code')) {
+      return;
+    }
+    
+    const countryCode = document.createElement("div");
+    countryCode.className = "dev-country-code";
+    countryCode.textContent = country;
+    tileEl.appendChild(countryCode);
   }
 })();
