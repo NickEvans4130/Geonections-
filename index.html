@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Geonections</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%236ea8fe'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="tabs">
+        <h1 class="logo">Geonections</h1>
+        <button id="past-btn" class="btn nav-btn" type="button">Past Geonections</button>
+      </div>
+      <div class="status">
+        <span id="groups-remaining">Groups: 4</span>
+        <span id="mistakes-left">Mistakes: 4</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="controls">
+      <button id="submit-btn" class="btn primary" type="button">Submit Group</button>
+      <button id="deselect-btn" class="btn" type="button">Deselect</button>
+      <button id="shuffle-btn" class="btn" type="button">Shuffle</button>
+      <button id="share-btn" class="btn" type="button" disabled>Share</button>
+    </div>
+
+    <div id="message" class="messages" aria-live="polite"></div>
+    <div id="board" class="board" aria-label="Puzzle board"></div>
+
+    <section class="solved" aria-label="Solved groups">
+      <div id="solved"></div>
+    </section>
+
+    <footer class="site-footer">
+      <div>© <span id="year">2025</span> Geonections</div>
+    </footer>
+  </main>
+
+  <!-- Fullscreen Street View modal -->
+  <div id="tile-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Tile viewer">
+    <div class="modal-backdrop"></div>
+    <div class="modal-body">
+      <button id="tile-close" class="close" aria-label="Close">×</button>
+
+      <!-- Street View mounts here -->
+      <div id="pano" class="pano"></div>
+      <!-- Transparent overlay to block interaction -->
+      <div id="freeze-overlay" class="freeze-overlay" aria-hidden="true"></div>
+
+      <!-- Country check UI -->
+      <form id="guess-form" class="guess-form">
+        <label>
+          <span>Country</span>
+          <input id="guess-input" name="guess" list="country-suggestions" autocomplete="off" required />
+          <datalist id="country-suggestions"></datalist>
+        </label>
+        <button class="btn primary" type="submit">Check</button>
+        <span id="guess-feedback" class="guess-feedback" aria-live="polite"></span>
+      </form>
+    </div>
+  </div>
+
+  <div id="info-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Game instructions">
+    <div class="modal-backdrop"></div>
+    <div class="info-content">
+      <button id="info-close" class="close" aria-label="Close info card">×</button>
+      <h2>Welcome to Geonections</h2>
+      <ul>
+        <li>You type your guess after selecting four tiles.</li>
+        <li>Country codes are supported.</li>
+        <li>You can tag tiles.</li>
+        <li>Fullscreen mode is available (press 'F' or use the fullscreen icon).</li>
+      </ul>
+    </div>
+  </div>
+
+  <script src="./script.js" defer></script>
+</body>
+</html>
