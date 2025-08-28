@@ -12,7 +12,7 @@
     <div class="container header-inner">
       <div class="tabs">
         <h1 class="logo">Geonections</h1>
-        <!-- <button id="past-btn" class="btn nav-btn" type="button">Past Geonections</button> -->
+<button id="past-btn" class="btn nav-btn" type="button">Past Geonections</button>
       </div>
       <div class="status">
         <span id="groups-remaining">Groups: 4</span>
@@ -53,19 +53,41 @@
     </div>
   </div>
 
-  <div id="info-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Game instructions">
-    <div class="modal-backdrop"></div>
-    <div class="info-content">
-      <button id="info-close" class="close" aria-label="Close info card">x</button>
-      <h2>Welcome to Geonections</h2>
-      <ul>
-        <li>You type your guess after selecting four tiles.</li>
-        <li>Country codes are supported.</li>
-        <li>You can tag tiles.</li>
-        <li>Fullscreen mode is available (press 'F' or use the fullscreen icon).</li>
-      </ul>
-    </div>
+<div id="info-modal" class="modal" role="dialog" aria-modal="true" aria-label="Game instructions">
+  <div class="modal-backdrop"></div>
+  <div class="info-content">
+    <button id="info-close" class="close" aria-label="Close info card">Got it</button>
+
+    <h2>🌍 Welcome to Geonections!</h2>
+
+    <p><strong>Make four groups of four</strong> — each group is from the same country.</p>
+
+    <h3>How to play</h3>
+    <ol>
+      <li>Click a tile to select it (it gets a color tag). Click again to deselect.</li>
+      <li>Select in sets of four.</li>
+      <li>Correct sets lock in. Wrong sets use 1 mistake. You have 4 mistakes total.</li>
+    </ol>
+
+    <h3>Helpful controls</h3>
+    <ul>
+      <li>Double-click a tile or press <strong>F</strong> to toggle full-screen view on the last tile you’ve selected.</li>
+      <li><strong>Shuffle</strong> reorders unsolved tiles.</li>
+      <li><strong>Share</strong> appears after the game ends.</li>
+    </ul>
+
+    <p>
+      A GeoGuessr challenge link will appear after you’ve completed the Geonections.
+      Type your score after “<strong>Score:</strong>” in the message that is copied to your clipboard.
+    </p>
+
+    <p><em>Good luck!</em></p>
+
+    <p style="margin-top: 0.75rem; color: var(--muted);">
+      For feedback or anything, hit me up on Discord. Username: <strong>a082239</strong>
+    </p>
   </div>
+</div>
 
   <script src="./tileModal.js" defer></script>
   <script src="./script.js" defer></script>

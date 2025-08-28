@@ -1,6 +1,6 @@
 (() => {
   // ========= CONFIG =========
-  const DEV_MODE = true; // Show country codes on tiles for testing
+  const DEV_MODE = false; // Show country codes on tiles for testing
   const STREET_VIEW_API_KEY = "AIzaSyAb2IZiueqc9Io7GSYAp2hy6nvvUL_WdJw"; // your key
   
   // Export for use in tileModal.js
@@ -12,6 +12,29 @@
   const DIFF_COLORS = { Easy: "#FACC15", Medium: "#14B8A6", Hard: "#A855F7", Expert: "#EF4444" };
   const DIFF_EMOJI  = { Easy: "🟨", Medium: "🟦", Hard: "🟪", Expert: "🟥" };
   const TAG_ORDER   = ["Easy", "Medium", "Hard", "Expert"];
+    // ========= DAILY PUZZLE (UTC) =========
+  // Set this to the date when "Geonections #1" should go live (00:00 UTC that day).
+  // Months are 0-based (7 = August). Example below uses Aug 26, 2025.
+  const LAUNCH_UTC = Date.UTC(2025, 8, 1);
+
+  function todayPuzzleNumberUTC() {
+    const now = new Date();
+    // Midnight UTC for "today"
+    const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    // Days since launch, floor to whole days
+    const days = Math.floor((todayUTC - LAUNCH_UTC) / 86400000);
+    // Clamp to 1+
+    return Math.max(1, days + 1);
+  }
+
+  function resolvePuzzleNumberFromURLOrUTC() {
+    const params = new URLSearchParams(location.search);
+    const p = params.get("puzzle");
+    const n = p ? parseInt(p, 10) : NaN;
+    if (!Number.isNaN(n) && n > 0) return n; // explicit override
+    return todayPuzzleNumberUTC();            // daily default at 00:00 UTC
+  }
+
 
   // ========= SELECTION BUCKETS (4 buckets x 4 items) =========
   function makeBuckets(capacity = 4, groups = 4) {
@@ -128,17 +151,18 @@
   async function init() {
     showMessage("");  // clear any stale messages
     try {
-      const puzzle = new URLSearchParams(location.search).get("puzzle") || "1";
+
+const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
       // Try multiple filename patterns (to handle spaces, encoding, etc.)
       const candidates = [
-        `./Geonections%20%23${puzzle}.json`,     // e.g., "Geonections #1.json" (with encoded '#')
-        `./Geonections%2520%2523${puzzle}.json`, // double-encoded edge case
-        `./Geonections%20${puzzle}.json`,        // "Geonections 1.json"
+        // `./Geonections%20%23${puzzle}.json`,     // e.g., "Geonections #1.json" (with encoded '#')
+        // `./Geonections%2520%2523${puzzle}.json`, // double-encoded edge case
+        // `./Geonections%20${puzzle}.json`,        // "Geonections 1.json"
         `./Geonections_${puzzle}.json`,          // "Geonections_1.json"
-        `./Geonections-${puzzle}.json`,          // "Geonections-1.json"
-        `./Geonections.json`,                    // fallback to generic name
-        `./geonections.json`,
-        `/Geonections.json`
+        // `./Geonections-${puzzle}.json`,          // "Geonections-1.json"
+        // `./Geonections.json`,                    // fallback to generic name
+        // `./geonections.json`,
+        // `/Geonections.json`
       ];
       const { json, used } = await tryFetchJSON(candidates);
       loadedSource = used;
@@ -213,6 +237,20 @@
     showMessage("");
   });
   shareBtn?.addEventListener("click", onShare);
+                const pastBtn     = $("#past-btn");
+
+    pastBtn?.addEventListener("click", () => {
+    const max = todayPuzzleNumberUTC(); // only allow up to "today"
+    const input = prompt(`Enter puzzle number (1–${max}):`);
+    const num = input ? parseInt(input, 10) : NaN;
+    if (!Number.isNaN(num) && num >= 1 && num <= max) {
+      const sp = new URLSearchParams(location.search);
+      sp.set("puzzle", String(num));
+      // This reloads the page with the chosen puzzle
+      location.search = sp.toString();
+    }
+  });
+
 
 
   infoClose?.addEventListener("click", () => infoModal?.classList.add("hidden"));
@@ -1076,6 +1114,8 @@
           cleanup();
         }
       });
+
+
       
       // Focus input and select text
       setTimeout(() => {
