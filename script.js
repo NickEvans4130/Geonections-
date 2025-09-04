@@ -1249,7 +1249,10 @@ function buildShareText() {
 
   // Header ONLY: "Geonections #<n>", then the rows. Nothing else.
 const streak = getStreak();
-return `Geonections #${puzzleNo}\nStreak ${streak}\n${rows.join("\n")}\nhttps://geonections.com`;
+const modeLabel = (typeof isExpertMode === "function" && isExpertMode()) ? " (Expert)" : "";
+const link = "https://geonections.com";
+
+return `Geonections #${puzzleNo}${modeLabel}\nStreak: ${streak}\n${rows.join("\n")}\n${link}`;
 }
 async function onShare() {
   const text = buildShareText();
