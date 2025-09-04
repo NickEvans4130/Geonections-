@@ -1248,8 +1248,8 @@ function buildShareText() {
     (window.currentPuzzleNumber || 1);
 
   // Header ONLY: "Geonections #<n>", then the rows. Nothing else.
-  const streak = getStreak();
-  return `Geonections #${puzzleNo}\nStreak ${streak}\n${rows.join("\n")}`;
+const streak = getStreak();
+return `Geonections #${puzzleNo}\nStreak ${streak}\n${rows.join("\n")}\nhttps://geonections.com`;
 }
 async function onShare() {
   const text = buildShareText();

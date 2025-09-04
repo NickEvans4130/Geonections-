@@ -35,9 +35,18 @@
       <div id="solved"></div>
     </section>
 
-    <!-- <footer class="site-footer">
-      <div>© <span id="year">2025</span> Geonections</div>
-    </footer> -->
+<footer class="site-footer">
+  <div>© <span id="year">2025</span> Geonections</div>
+
+  <!-- Visitor counter (hidden by default; still counts) -->
+  <div id="site-counter" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;">
+    <a href="https://www.hitwebcounter.com/" target="_blank" rel="noopener noreferrer">
+      <img src="https://hitwebcounter.com/counter/counter.php?page=21436959&style=0001&nbdigits=5&type=page&initCount=10"
+           title="Visitor counter" alt="Visitor counter" />
+    </a>
+  </div>
+</footer>
+
   </main>
 
   <!-- Fullscreen Street View modal -->
@@ -60,25 +69,22 @@
 
     <h2>🌍 Welcome to Geonections!</h2>
 
-    <p><strong>Make four groups of four</strong> — each group is from the same country.</p>
+<p><strong>Make four groups of four</strong> — each group is from the same country.</p>
 
-    <h3>How to play</h3>
-    <ol>
-      <li>Click a tile to select it (it gets a color tag). Click again to deselect.</li>
-      <li>Select in sets of four.</li>
-      <li>Correct sets lock in. Wrong sets use 1 mistake. You have 4 mistakes total.</li>
-    </ol>
+<h3>How to play</h3>
+<ol>
+  <li>Click a tile to select it (it gets a color tag). Click again to deselect.</li>
+  <li>Select in sets of four.</li>
+  <li>You have 4 mistakes total.</li>
+</ol>
 
-    <h3>Helpful controls</h3>
-    <ul>
-      <li>Double-click a tile or press <strong>F</strong> to toggle full-screen view on the last tile you’ve selected.</li>
-      <li><strong>Shuffle</strong> reorders unsolved tiles.</li>
-      <li><strong>Share</strong> appears after the game ends.</li>
-    </ul>
+<h3>Helpful controls</h3>
+<ul>
+  <li>Double-click a tile or press <strong>F</strong> to toggle full-screen on the last tile you clicked.</li>
+  <li><strong>Shuffle</strong> reorders unsolved tiles.</li>
+</ul>
 
-    <p>
-      Warning: This game is intended for geoguessr players, and is intended to be at least mildly difficult for the best among them, so don’t feel bad if you can’t get one.
-    </p>
+<p><em>Note:</em> This game is designed for <strong>GeoGuessr</strong> players and meant to be mildly challenging—even for the best among them. Don’t sweat a miss.</p>
 
     <p><em>Good luck!</em></p>
 
@@ -101,5 +107,45 @@
 
 <script src="./tileModal.js" defer></script>
 <script src="./script.js" defer></script>
+<script>
+(() => {
+  // Show the counter if ?counter is in the URL, or toggle with Shift+Alt+C
+  const params = new URLSearchParams(location.search);
+  const enable = params.has("counter") || localStorage.getItem("showCounter") === "1";
+
+  function setVisible(on) {
+    const el = document.getElementById("site-counter");
+    if (!el) return;
+    if (on) {
+      el.style.position = "static";
+      el.style.left = "auto";
+      el.style.width = "auto";
+      el.style.height = "auto";
+      el.style.opacity = "1";
+      el.style.overflow = "visible";
+      el.style.pointerEvents = "auto";
+    } else {
+      el.style.position = "absolute";
+      el.style.left = "-9999px";
+      el.style.width = "1px";
+      el.style.height = "1px";
+      el.style.opacity = "0";
+      el.style.overflow = "hidden";
+      el.style.pointerEvents = "none";
+    }
+  }
+
+  setVisible(enable);
+
+  // Secret hotkey: Shift + Alt + C toggles visibility (remembered per browser)
+  window.addEventListener("keydown", (e) => {
+    if (e.key.toLowerCase() === "c" && e.shiftKey && e.altKey) {
+      const nowOn = !(localStorage.getItem("showCounter") === "1");
+      localStorage.setItem("showCounter", nowOn ? "1" : "0");
+      setVisible(nowOn);
+    }
+  });
+})();
+</script>
 </body>
 </html>
