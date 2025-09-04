@@ -62,7 +62,16 @@ async function openTileModal(tile) {
   };
   window.addEventListener("keydown", keyHandler);
   tileModal._keyHandler = keyHandler; // stash so we can remove it later
-  
+  // Blind in Expert mode: show black mask w/ "?"
+if (tile.blind) {
+  const mask = document.createElement("div");
+  mask.style.cssText = "position:absolute; inset:0; background:#000; display:grid; place-items:center; color:#e53935; font:800 42px/1 system-ui;";
+  mask.textContent = "?";
+  panoEl.appendChild(mask);
+  if (freezeOverlay) freezeOverlay.style.display = "none";
+  setTimeout(() => guessInput.focus(), 50);
+  return;
+}
   if (USE_STATIC_IN_VIEWER) {
     // Show a static Street View image (no interaction)
     const img = document.createElement("img");
@@ -71,7 +80,7 @@ async function openTileModal(tile) {
     img.style.cssText = "position:absolute; inset:0; width:100%; height:100%; object-fit:cover;";
     panoEl.appendChild(img);
     if (freezeOverlay) freezeOverlay.style.display = "none";
-    setTimeout(() => guessInput.focus(), 50);
+if (guessInput) setTimeout(() => guessInput.focus(), 50);
     return;
   }
   
@@ -98,8 +107,11 @@ async function openTileModal(tile) {
     pano = new google.maps.StreetViewPanorama(panoEl, opts);
     const fixedPov = { heading: tile.heading || 0, pitch: tile.pitch || 0 };
     pano.setPov(fixedPov);
-    const fixedZoom = pano.getZoom();
-    
+
+    // *** INSERT: force wide view and lock to it ***
+    const fixedZoom = 0;         // wide FOV (~110–120°)
+    pano.setZoom(fixedZoom);
+
     google.maps.event.addListener(pano, "pov_changed", () => {
       const p = pano.getPov();
       if (Math.abs(p.heading - fixedPov.heading) > 0.1 || Math.abs(p.pitch - fixedPov.pitch) > 0.1) {

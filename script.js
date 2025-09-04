@@ -7,6 +7,22 @@
   window.STREET_VIEW_API_KEY = STREET_VIEW_API_KEY;
   const REQUIRE_COUNTRY_GUESS = true;
   const MAX_MISTAKES = 4;
+  // ==== MODE (normal / expert) ====
+const MODE_KEY = "geonections_mode";
+let currentMode = localStorage.getItem(MODE_KEY) || "normal";
+function isExpertMode() { return currentMode === "expert"; }
+function setMode(m) {
+  currentMode = m;
+  localStorage.setItem(MODE_KEY, m);
+  document.documentElement.dataset.mode = m; // for CSS
+}
+
+// Mistake budget: 4 normal, 2 expert
+const MAX_MISTAKES_NORMAL = 4;
+const MAX_MISTAKES_EXPERT = 2;
+function getMaxMistakes() {
+  return isExpertMode() ? MAX_MISTAKES_EXPERT : MAX_MISTAKES_NORMAL;
+}
   // Use Static Street View in fullscreen? (false = pano mode, locked POV)
   const USE_STATIC_IN_VIEWER = false;
   const DIFF_COLORS = { Easy: "#FACC15", Medium: "#14B8A6", Hard: "#A855F7", Expert: "#EF4444" };
@@ -15,7 +31,37 @@
     // ========= DAILY PUZZLE (UTC) =========
   // Set this to the date when "Geonections #1" should go live (00:00 UTC that day).
   // Months are 0-based (7 = August). Example below uses Aug 26, 2025.
-  const LAUNCH_UTC = Date.UTC(2025, 8, 1);
+  const LAUNCH_UTC = Date.UTC(2025, 8, 5);
+  // ========= DAILY CHALLENGES (rotate at 00:00 UTC) =========
+const CHALLENGES = [
+  { name: "Fun Facts! 🤯", url: "https://www.geoguessr.com/challenge/HTspBAzQLf8BEid4" },
+  { name: "Red and Orange 💥", url: "https://www.geoguessr.com/challenge/prF37wfbCzMw99p1" },
+  { name: "Yellow and Green 🌻", url: "https://www.geoguessr.com/challenge/CZ94e2921BpthgUX" },
+  { name: "FOG ☁️", url: "https://www.geoguessr.com/challenge/5nvMggX9L9Eg4NnY" },
+  { name: "Animals 🦊", url: "https://www.geoguessr.com/challenge/p9sbsJGzihQX64wB" },
+  { name: "Random Interesting Metas 🌎", url: "https://www.geoguessr.com/challenge/4H7K3wfqzIovZY90" },
+  { name: "Region guessing the US with Plants 🌿", url: "https://www.geoguessr.com/challenge/YWA8ZXmYqssztj2L" },
+  { name: "Cool Trees 🤩", url: "https://www.geoguessr.com/challenge/Efz0sIktnzDZbWIj" },
+  { name: "Plants to help u tell SA from SEA 🌴", url: "https://www.geoguessr.com/challenge/RQ8W5Srg6yIf9lb8" },
+  { name: "Deciduous Trees of Scandinavia 🍁", url: "https://www.geoguessr.com/challenge/uQ885ktRN90xVvdj" },
+  { name: "Oklahoma or Brazil 🧐", url: "https://www.geoguessr.com/challenge/cn2u7PAuVapNjBSK" },
+  { name: "Niche European Architecture 🏡", url: "https://www.geoguessr.com/challenge/TI8GsSocJh0GnaZh" },
+  { name: "Lovely Locs ⛅️", url: "https://www.geoguessr.com/challenge/CKHnHvI4PN1WE2Pr" },
+  { name: "Album Covers 🖼️", url: "https://www.geoguessr.com/challenge/PZGEvTMB99qqmwK6" }
+];
+
+// Start the rotation the same day your puzzles start
+const CHALLENGE_START_UTC = LAUNCH_UTC;
+
+function todayChallenge() {
+  const now = new Date();
+  const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  let dayIndex = Math.floor((todayUTC - CHALLENGE_START_UTC) / 86400000);
+  if (dayIndex < 0) dayIndex = 0; // before start date → show the first one
+  const idx = dayIndex % CHALLENGES.length;
+  return CHALLENGES[idx];
+}
+
 
   function todayPuzzleNumberUTC() {
     const now = new Date();
@@ -44,12 +90,15 @@
     const locate     = (id) => (index.has(id) ? index.get(id) : -1);
     let firstOpen    = () => buckets.findIndex(s => s.size < capacity);
 
-    function add(id) {
-      // Check if we already have 4 total tiles selected
-      const totalSelected = index.size;
-      if (totalSelected >= 4) return { ok: false, reason: 'max_selection' };
-      
-      const i = firstOpen();
+function add(id) {
+// Normal: cap at 4 selected at once. Expert: allow up to all 16.
+const totalSelected = index.size;
+if (!isExpertMode() && totalSelected >= 4) {
+  return { ok: false, reason: 'max_selection' };
+}
+
+  const i = firstOpen();
+
       if (i === -1) return { ok: false, reason: 'full' }; // all 16 filled
       buckets[i].add(id);
       index.set(id, i);
@@ -84,13 +133,17 @@
   let allData = [];
   let boardTiles = [];
   const selections = makeBuckets(4, 4);
-  let mistakesLeft = MAX_MISTAKES;
+let mistakesLeft = getMaxMistakes();
   let currentTile = null;
   let lastClickedTile = null;
   let tagStep = 0;
   const tagCounts = { Easy: 0, Medium: 0, Hard: 0, Expert: 0 };
   // Track which JSON file was loaded (for debug display)
   let loadedSource = "";
+  // Guess history for share text (rows of emoji)
+let shareAttempts = [];
+  // Buffer of 4 proposed groups when in Expert mode
+let expertBuffer = [];
 
   // ========= DOM (ensure essential elements exist) =========
   const $ = (s) => document.querySelector(s);
@@ -136,6 +189,23 @@
   const infoModal     = $("#info-modal");
   const infoClose     = $("#info-close");
 
+  // Wire expert toggle in the welcome card
+const expertToggle = document.getElementById("expert-toggle");
+if (expertToggle) {
+  // reflect stored mode at load
+  document.documentElement.dataset.mode = currentMode;
+  expertToggle.checked = isExpertMode();
+  expertToggle.addEventListener("change", () => {
+    setMode(expertToggle.checked ? "expert" : "normal");
+    mistakesLeft = getMaxMistakes();
+    if (mistakesLeftEl) mistakesLeftEl.textContent = `Mistakes: ${mistakesLeft}`;
+    // fresh run so rules apply immediately
+    startNewGame();
+    // ensure the one blind tile is applied (see 3d)
+    applyExpertBlindTile();
+  });
+}
+
   const yearEl = document.getElementById("year");
   if (yearEl) yearEl.textContent = new Date().getFullYear();
 
@@ -168,6 +238,7 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
       loadedSource = used;
       allData = normalizeGeonections(json);
       startNewGame();
+      applyExpertBlindTile();
       // Hide any error message after successful load
       showMessage("");
       // Show info modal once per session (if present in DOM)
@@ -203,7 +274,10 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
   }
 
   // ========= EVENT LISTENERS =========
-  submitBtn?.addEventListener("click", onSubmitGroup);
+submitBtn?.addEventListener("click", () => {
+  if (isExpertMode()) onSubmitGroupExpert();
+  else onSubmitGroup();
+});
   deselectBtn?.addEventListener("click", clearSelection);
   shuffleBtn?.addEventListener("click", () => {
     // Shuffle only unsolved tiles, keep solved ones in their exact positions
@@ -274,11 +348,13 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
     }
     
     // Press 'Enter' key to submit the current group selection
-    if (e.key === "Enter") {
-      if (selections.firstFullIdx() !== -1) {
-        onSubmitGroup();
-      }
-    }
+ if (e.key === "Enter") {
+  if (isExpertMode()) {
+    onSubmitGroupExpert();
+  } else if (selections.firstFullIdx() !== -1) {
+    onSubmitGroup();
+  }
+}
   });
 
   // ========= DATA NORMALIZATION =========
@@ -403,7 +479,7 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
 
   // ========= STREET VIEW STATIC URLS =========
   function buildStreetViewURL({ panoId, lat, lng, heading = 0, pitch = 0 }, opts = {}) {
-    const fov   = opts.fov ?? 90;
+    const fov   = opts.fov ?? 110;
     const scale = 2;
     const w     = opts.w ?? 640;
     const h     = opts.h ?? 640;
@@ -433,8 +509,9 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
 
   // ========= GAME FLOW =========
   function startNewGame() {
+    shareAttempts = [];
     selections.clearAll();
-    mistakesLeft = MAX_MISTAKES;
+mistakesLeft = getMaxMistakes();
     tagStep = 0;
     tagCounts.Easy = tagCounts.Medium = tagCounts.Hard = tagCounts.Expert = 0;
     gameActuallySolved = false;
@@ -590,7 +667,7 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
     }
 
     updateSelectionUI();
-    if (submitBtn) submitBtn.disabled = (selections.firstFullIdx() === -1);
+updateSubmitDisabled();
   }
 
   // Legacy function - now calls initialRenderBoard
@@ -630,7 +707,7 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
     
     // Update UI without re-rendering
     updateSelectionUI();
-    if (submitBtn) submitBtn.disabled = (selections.firstFullIdx() === -1);
+updateSubmitDisabled();
   }
 
   function reorderBoardDOM() {
@@ -664,7 +741,7 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
     
     // Update UI without re-rendering
     updateSelectionUI();
-    if (submitBtn) submitBtn.disabled = (selections.firstFullIdx() === -1);
+updateSubmitDisabled();
   }
 
   function applyRing(el, tile) {
@@ -747,6 +824,16 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
     // enable submit if *any* bucket is full
     if (submitBtn) submitBtn.disabled = (selections.firstFullIdx() === -1);
   }
+
+  function updateSubmitDisabled() {
+  if (!submitBtn) return;
+  if (isExpertMode()) {
+    const allFull = selections.entries().every(arr => arr.length === selections.capacity);
+    submitBtn.disabled = !allFull;            // Expert: only enable when all 4 groups (16 tiles) are filled
+  } else {
+    submitBtn.disabled = (selections.firstFullIdx() === -1); // Normal: enable when any bucket is full
+  }
+}
   
   function clearSelection() {
     selections.clearAll();
@@ -758,6 +845,11 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
     const i = selections.firstFullIdx();
     if (i === -1) return; // nothing ready
     const ids = [...selections.buckets[i]];
+    // Record this guess for share text (Normal mode only)
+if (!isExpertMode()) {
+  // `ids` is the 4 selected tile IDs
+  pushShareRowFromIds(ids);
+}
     const sel = boardTiles.filter(t => ids.includes(t.id));
     const countries = [...new Set(sel.map(t => t.country))];
     
@@ -778,7 +870,6 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
         return wrongGuess("Those 4 aren't the same country.");
       }
     }
-
     const country = countries[0];
 
     const finalize = () => {
@@ -793,6 +884,57 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
       finalize();
     }
   }
+  function onSubmitGroupExpert() {
+  // Require all 4 buckets (16 tiles) filled before grading
+  const groups = selections.entries();
+  const allFull = groups.every(arr => arr.length === selections.capacity);
+  if (!allFull) {
+    showMessage("Expert: pick all 16 tiles (4 groups) before submitting.", true);
+    return;
+  }
+// Overwrite share history with this all-at-once attempt (4 rows)
+shareAttempts = [];
+const groupsNow = selections.entries(); // 4 arrays of 4 ids (Yellow, Teal, Purple, Red)
+groupsNow.forEach(arr => pushShareRowFromIds(arr));
+  // Ask the player to name Yellow/Teal/Purple/Red, then grade
+  showExpertLabelModal((labels) => {
+    // All-or-nothing: each group must be a single country
+    const allCorrect = groups.every(arr => {
+      const codes = new Set(arr.map(id => boardTiles.find(t => t.id === id)?.country));
+      return codes.size === 1;
+    });
+
+if (allCorrect) {
+  // Lock everything and finish
+  groups.forEach(arr => {
+    arr.forEach(id => {
+      const t = boardTiles.find(x => x.id === id);
+      if (t) t.locked = true;
+    });
+  });
+  reorderBoardIntoCountryRows?.();
+  selections.clearAll();
+  updateSelectionUI();
+  updateStatus?.();
+  shareBtn?.removeAttribute("disabled");
+  markSolvedToday(); // <<— ADD THIS LINE
+  showCongratulationsOverlay?.();
+} else {
+      // One strike for the whole 16-tile attempt
+      mistakesLeft -= 1;
+      if (mistakesLeftEl) mistakesLeftEl.textContent = `Mistakes: ${mistakesLeft}`;
+      if (mistakesLeft <= 0) {
+        revealSolution?.();
+      } else {
+        showMessage("Not quite. Expert mode grades all four groups together.", true);
+        selections.clearAll();
+        updateSelectionUI();
+        updateSubmitDisabled?.();
+      }
+    }
+  });
+}
+
   function lockGroup(country, tiles) {
     tiles.forEach(t => t.locked = true);
     addSolvedStripe(tiles[0].difficulty, country, tiles.map(t => t.url));
@@ -814,53 +956,157 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
     
     updateStatus();
     
-    // Check if all tiles are now locked (game solved)
-    const allSolved = boardTiles.every(t => t.locked);
-    
-    if (allSolved) {
-      // Game actually solved - set flag and show congratulations
-      gameActuallySolved = true;
-      showMessage("🎉 Congratulations! You solved the puzzle! 🎉", false);
-      shareBtn?.removeAttribute("disabled");
-      showCongratulationsOverlay();
-    }
+// Check if all tiles are now locked (game solved)
+const allSolved = boardTiles.every(t => t.locked);
+
+if (allSolved) {
+  // Game actually solved - set flag and show congratulations
+  gameActuallySolved = true;
+  markSolvedToday(); // <<— ADD THIS LINE
+  showMessage("🎉 Congratulations! You solved the puzzle! 🎉", false);
+  shareBtn?.removeAttribute("disabled");
+  showCongratulationsOverlay();
+}
   }
+
+  function showExpertLabelModal(onConfirm) {
+  // Overlay
+  const overlay = document.createElement("div");
+  overlay.className = "congrats-overlay";
+
+  // Modal
+  const modal = document.createElement("div");
+  modal.className = "congrats-modal label-modal";
+
+  const title = document.createElement("div");
+  title.className = "label-title";
+  title.textContent = "Name your four groups";
+
+  // Inputs for Yellow / Green / Blue / Purple
+const colors = ["yellow","teal","purple","red"];
+  const labels = {};
+  const list = document.createElement("div");
+  list.className = "label-list";
+
+  colors.forEach((c) => {
+    const row = document.createElement("div");
+    row.className = "label-row";
+
+    const sw = document.createElement("span");
+    sw.className = `swatch ${c}`;
+    row.appendChild(sw);
+
+    const lab = document.createElement("label");
+    lab.textContent = c[0].toUpperCase() + c.slice(1) + ":";
+    lab.style.minWidth = "72px";
+    lab.style.color = "var(--muted)";
+    row.appendChild(lab);
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "Country / group name";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.addEventListener("input", () => { labels[c] = input.value.trim(); });
+    row.appendChild(input);
+
+    list.appendChild(row);
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "actions";
+  const cancel = document.createElement("button");
+  cancel.className = "btn";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => overlay.remove());
+  const confirm = document.createElement("button");
+  confirm.className = "btn primary";
+  confirm.textContent = "Submit all";
+  confirm.addEventListener("click", () => {
+    overlay.remove();
+    onConfirm?.(labels);
+  });
+  actions.appendChild(cancel);
+  actions.appendChild(confirm);
+
+  modal.appendChild(title);
+  modal.appendChild(list);
+  modal.appendChild(actions);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  // focus first input
+  const firstInput = list.querySelector("input");
+  if (firstInput) firstInput.focus();
+
+  // click outside to close
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+}
   
-  function reorderBoardAfterSolve() {
-    // Count how many groups are solved
-    const solvedCount = Math.floor(boardTiles.filter(t => t.locked).length / 4);
-    
-    if (solvedCount === 0) return;
-    
-    // Create new board order: solved groups first, then unsolved tiles
-    const solvedTiles = boardTiles.filter(t => t.locked);
-    const unsolvedTiles = boardTiles.filter(t => !t.locked);
-    
-    // Group solved tiles by their original positions to maintain row order
-    const solvedGroups = [];
-    for (let i = 0; i < solvedCount; i++) {
-      const startIdx = i * 4;
-      solvedGroups.push(solvedTiles.slice(startIdx, startIdx + 4));
-    }
-    
-    // Rebuild boardTiles array: solved groups in top rows, unsolved below
-    const newBoardTiles = [];
-    
-    // Add solved groups to top rows
-    solvedGroups.forEach(group => {
-      newBoardTiles.push(...group);
-    });
-    
-    // Add remaining unsolved tiles
-    newBoardTiles.push(...unsolvedTiles);
-    
-    // Update the boardTiles array
-    boardTiles = newBoardTiles;
-    
-    // Reorder DOM elements without re-rendering
-    reorderBoardDOM();
+function reorderBoardAfterSolve() {
+  // Count how many groups are solved
+  const solvedCount = Math.floor(boardTiles.filter(t => t.locked).length / 4);
+  if (solvedCount === 0) return;
+
+  // Create new board order: solved groups first, then unsolved tiles
+  const solvedTiles = boardTiles.filter(t => t.locked);
+  const unsolvedTiles = boardTiles.filter(t => !t.locked);
+
+  // Group solved tiles by their original positions to maintain row order
+  const solvedGroups = [];
+  for (let i = 0; i < solvedCount; i++) {
+    const startIdx = i * 4;
+    solvedGroups.push(solvedTiles.slice(startIdx, startIdx + 4));
   }
-  
+
+  // Rebuild boardTiles array: solved groups in top rows, unsolved below
+  const newBoardTiles = [];
+
+  // Add solved groups to top rows
+  solvedGroups.forEach(group => {
+    newBoardTiles.push(...group);
+  });
+
+  // Add remaining unsolved tiles
+  newBoardTiles.push(...unsolvedTiles);
+
+  // Update the boardTiles array
+  boardTiles = newBoardTiles;
+
+  // Reorder DOM elements without re-rendering
+  reorderBoardDOM();
+}
+// Put all 4 tiles from the same country on the same row (end-of-game tidy-up)
+function reorderBoardIntoCountryRows() {
+  // Build stable “first seen” order for countries
+  const firstIndex = new Map();
+  boardTiles.forEach((t, i) => {
+    if (!firstIndex.has(t.country)) firstIndex.set(t.country, i);
+  });
+
+  // Group tiles by country
+  const byCountry = new Map();
+  for (const t of boardTiles) {
+    if (!byCountry.has(t.country)) byCountry.set(t.country, []);
+    byCountry.get(t.country).push(t);
+  }
+
+  // Order countries by where they first appeared on the board (stable to user)
+  const orderedCountries = Array.from(byCountry.keys())
+    .sort((a, b) => firstIndex.get(a) - firstIndex.get(b));
+
+  // Flatten into rows of 4 by country
+  const newBoardTiles = [];
+  for (const c of orderedCountries) {
+    const tiles = byCountry.get(c) || [];
+    newBoardTiles.push(...tiles);
+  }
+
+  // Apply and sync DOM
+  boardTiles = newBoardTiles;
+  reorderBoardDOM();
+}
+
   function addSolvedStripe(difficulty, country, urls) {
   }
   function wrongGuess(msg) {
@@ -877,22 +1123,25 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
     showMessage("Out of mistakes!");
     updateStatus();
     
-    // Add country codes to all tiles since they're now revealed
-    boardTiles.forEach(tile => {
-      const tileEl = tileEls.get(tile.id);
-      if (tileEl) {
-        addCountryCodeToTile(tileEl, tile.country);
-      }
-    });
+// Add country codes to all tiles since they're now revealed
+boardTiles.forEach(tile => {
+  const tileEl = tileEls.get(tile.id);
+  if (tileEl) addCountryCodeToTile(tileEl, tile.country);
+});
+
+// Reorder into country rows so the end-state looks solved
+reorderBoardIntoCountryRows();
+
+// Game ended (failed) - enable sharing
+shareBtn?.removeAttribute("disabled");
     
-    // Game ended (failed) - enable sharing
-    shareBtn?.removeAttribute("disabled");
-    
-    // Only show congratulations if the game was actually solved, not just failed
-    const allSolved = boardTiles.every(t => t.locked);
-    if (allSolved && gameActuallySolved) {
-      showCongratulationsOverlay();
-    }
+// Only show congratulations if the game was actually solved, not just failed
+const allSolved = boardTiles.every(t => t.locked);
+if (allSolved && gameActuallySolved) {
+  showCongratulationsOverlay();
+} else {
+  showFailureOverlay(); // <— show the CTA + daily challenge even on failure
+}
   }
   function updateStatus() {
     if (groupsRemainingEl) {
@@ -936,46 +1185,115 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
     const source = useManual ? byManual : byDiff;
     return ["Easy", "Medium", "Hard", "Expert"].flatMap(diff => (source[diff] || []).slice(0, 4));
   }
-  function buildShareText() {
-    const tiles = tilesForShareCanonical();
-    const lines = [];
-    for (let r = 0; r < 4; r++) {
-      const rowTiles = tiles.slice(r * 4, r * 4 + 4);
-      const row = rowTiles.map(t => DIFF_EMOJI[(t.userTag || t.difficulty)] || "⬜").join("");
-      lines.push(row);
-    }
-    const mistakesUsed = MAX_MISTAKES - mistakesLeft;
-    const allSolved = boardTiles.every(t => t.locked);
-    const status = allSolved ? "Solved" : "Ended";
-    return `Geonections — ${status} (${mistakesUsed} mistakes)\n${lines.join("\n")}`;
-  }
-  async function onShare() {
-    const text = buildShareText();
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-        showMessage("Copied!");
-        return;
-      }
-    } catch (_) {}
-    // Fallback copy method
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.style.position = "fixed";
-    textarea.style.opacity = "0";
-    document.body.appendChild(textarea);
-    textarea.select();
-    try {
-      document.execCommand("copy");
+// Map true group difficulty -> emoji squares (Yellow, Teal(Blue), Purple, Red)
+const DIFF_TO_EMOJI = { Easy: "🟨", Medium: "🟦", Hard: "🟪", Expert: "🟥" };
+
+// Push one "guess row" to the share history
+function pushShareRowFromIds(ids) {
+  const row = ids.map(id => {
+    const t = boardTiles.find(x => x.id === id);
+    return DIFF_TO_EMOJI[t?.difficulty] || "⬜";
+  }).join("");
+  shareAttempts.push(row);
+}
+// ========= STREAK (UTC, per puzzle number) =========
+const STREAK_KEY = "gnx_streak";
+const LAST_SOLVED_KEY = "gnx_last_solved_puzzle";
+
+function currentPuzzleNumber() {
+  return (typeof resolvePuzzleNumberFromURLOrUTC === "function" && resolvePuzzleNumberFromURLOrUTC())
+      || (typeof todayPuzzleNumberUTC === "function" && todayPuzzleNumberUTC())
+      || (window.currentPuzzleNumber || 1);
+}
+
+function getStreak() {
+  return Number(localStorage.getItem(STREAK_KEY) || 0);
+}
+
+// Call this once when the puzzle is actually solved.
+// It increments if yesterday’s was solved; otherwise resets to 1.
+// It also guards against counting twice on the same puzzle.
+function markSolvedToday() {
+  const n = currentPuzzleNumber();
+  const last = Number(localStorage.getItem(LAST_SOLVED_KEY) || 0);
+  let streak = getStreak();
+
+  if (last === n) return streak;          // already counted for this puzzle
+  if (last === n - 1) streak = streak + 1; // consecutive
+  else streak = 1;                          // broken streak (or first solve)
+
+  localStorage.setItem(STREAK_KEY, String(streak));
+  localStorage.setItem(LAST_SOLVED_KEY, String(n));
+  return streak;
+}
+function buildShareText() {
+  // Use recorded attempts if present; otherwise fall back to the final 4×4
+  const rows = (shareAttempts && shareAttempts.length)
+    ? shareAttempts.slice()
+    : (() => {
+        const tiles = tilesForShareCanonical();
+        const tmp = ["", "", "", ""];
+        tiles.forEach((t, i) => {
+          const r = Math.floor(i / 4);
+          const emoji = DIFF_TO_EMOJI[(t.userTag || t.difficulty)] || "⬜";
+          tmp[r] += emoji;
+        });
+        return tmp;
+      })();
+
+  // Figure out the puzzle number you’re on
+  const puzzleNo =
+    (typeof resolvePuzzleNumberFromURLOrUTC === "function" && resolvePuzzleNumberFromURLOrUTC()) ||
+    (typeof todayPuzzleNumberUTC === "function" && todayPuzzleNumberUTC()) ||
+    (window.currentPuzzleNumber || 1);
+
+  // Header ONLY: "Geonections #<n>", then the rows. Nothing else.
+  const streak = getStreak();
+  return `Geonections #${puzzleNo}\nStreak ${streak}\n${rows.join("\n")}`;
+}
+async function onShare() {
+  const text = buildShareText();
+
+  // Try modern clipboard API first
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
       showMessage("Copied!");
-    } catch (_) {
-      showMessage("Press ⌘/Ctrl+C to copy from console.", true);
-      console.log(text);
+      return;
     }
-    document.body.removeChild(textarea);
+  } catch (_) {
+    // fall through to fallback
   }
 
+  // Fallback: temporary textarea
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand("copy");
+    showMessage("Copied!");
+  } catch (_) {
+    showMessage("Press ⌘/Ctrl+C to copy from console.", true);
+    console.log(text);
+  }
+  document.body.removeChild(textarea);
+}
+
   // ========= HELPERS =========
+  function applyExpertBlindTile() {
+  if (!isExpertMode()) return;
+  // Pick a hard/expert tile if available, otherwise random unsolved tile
+  const candidates = boardTiles.filter(t => /expert|hard/i.test(String(t.difficulty || "")) && !t.locked);
+  const pool = candidates.length ? candidates : boardTiles.filter(t => !t.locked);
+  if (!pool.length) return;
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  pick.blind = true;
+const el = tileEls.get(pick.id);
+  if (el) el.classList.add("blind");
+}
   function getSolvedCategories() {
     const solvedCategories = new Set();
     const difficultyCounts = { Easy: 0, Medium: 0, Hard: 0, Expert: 0 };
@@ -1107,14 +1425,9 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
       };
       
       submitBtn.addEventListener("click", submitGuess);
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          submitGuess();
-        } else if (e.key === "Escape") {
-          cleanup();
-        }
-      });
-
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") submitGuess();
+});
 
       
       // Focus input and select text
@@ -1151,10 +1464,17 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
     title.className = "congrats-title";
     title.textContent = "Congratulations!";
     
-    const message = document.createElement("p");
-    message.className = "congrats-message";
-    const mistakesUsed = MAX_MISTAKES - mistakesLeft;
-    message.textContent = `You've solved the puzzle in ${mistakesUsed} mistakes! Share your results with friends.`;
+  const message = document.createElement("p");
+message.className = "congrats-message";
+const max = getMaxMistakes();
+const mistakesUsed = max - mistakesLeft;
+message.innerHTML = `
+  You’ve solved the puzzle in <strong>${mistakesUsed}</strong> mistake${mistakesUsed === 1 ? '' : 's'}! Share your results with friends.
+  <br><br>
+  Play the GeoGuessr daily challenge to see how you stack up against other geonection players!
+  <br>
+  <strong>Today’s Challenge:</strong> <span id="daily-challenge-slot"></span>
+`;
     
     const shareBtn = document.createElement("button");
     shareBtn.className = "congrats-share-btn";
@@ -1193,17 +1513,100 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
     modal.appendChild(dismissBtn);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
+
+    // === Mount the daily challenge link ===
+    {
+      const slot = overlay.querySelector("#daily-challenge-slot");
+      if (slot) {
+        const c = todayChallenge();
+        const a = document.createElement("a");
+        a.href = c.url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = c.name;
+        slot.replaceChildren(a); // clear and insert link
+      }
+    }
+  } // <-- CLOSES showCongratulationsOverlay()
+  function showFailureOverlay() {
+  // Overlay root
+  const overlay = document.createElement("div");
+  overlay.className = "congrats-overlay";
+
+  // Modal
+  const modal = document.createElement("div");
+  modal.className = "congrats-modal";
+
+  // Emoji / title
+  const title = document.createElement("div");
+  title.className = "congrats-title";
+  title.textContent = "Good try!";
+
+  // Message + daily challenge slot
+  const message = document.createElement("div");
+  message.className = "congrats-message";
+  message.innerHTML = `
+    You ran out of mistakes. Better luck next time!
+    <br><br>
+    <strong>Today’s Challenge:</strong> <span id="daily-challenge-slot"></span>
+  `;
+
+  // Share button (re-use your existing onShare wiring through the main header button)
+  const shareBtnLocal = document.createElement("button");
+  shareBtnLocal.className = "congrats-share-btn";
+  shareBtnLocal.textContent = "Share Results";
+  shareBtnLocal.addEventListener("click", () => {
+    // This clicks the main Share button so you keep one sharing path.
+    document.querySelector("#share-btn")?.click();
+  });
+
+  // Dismiss
+  const dismissBtn = document.createElement("button");
+  dismissBtn.className = "dismiss-btn";
+  dismissBtn.textContent = "Dismiss";
+  dismissBtn.addEventListener("click", () => overlay.remove());
+
+  // Assemble
+  modal.appendChild(title);
+  modal.appendChild(message);
+  modal.appendChild(shareBtnLocal);
+  modal.appendChild(dismissBtn);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  // Inject today's challenge link
+  try {
+    const slot = message.querySelector("#daily-challenge-slot");
+    if (slot) {
+      const c = todayChallenge(); // already defined in your file
+      const a = document.createElement("a");
+      a.href = c.url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = c.name;
+      slot.appendChild(a);
+    }
+  } catch (e) {
+    console.error("Failed to inject challenge link:", e);
   }
 
+  // Close if user clicks the dimmed backdrop
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+}
+
+  // Keep a single helper to show 2-letter country code on tiles
   function addCountryCodeToTile(tileEl, country) {
     // Check if country code already exists
     if (tileEl.querySelector('.dev-country-code')) {
       return;
     }
-    
     const countryCode = document.createElement("div");
     countryCode.className = "dev-country-code";
     countryCode.textContent = country;
     tileEl.appendChild(countryCode);
   }
+
 })();
+

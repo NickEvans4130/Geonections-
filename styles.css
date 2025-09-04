@@ -41,6 +41,30 @@ body{
 }
 .logo{margin:0;font-size:1.25rem;letter-spacing:.3px}
 .status{display:flex;gap:1rem;color:var(--muted)}
+/* Keep title and Past button on one row */
+.tabs{
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: nowrap;            /* prevent wrapping under the title */
+}
+
+/* Make the Past Geonections button look like a small nav pill */
+.btn.nav-btn{
+  padding: .35rem .7rem;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  line-height: 1;
+}
+.btn.nav-btn:hover{
+  background: #141a25;
+}
+
+@media (max-width: 420px){
+  .btn.nav-btn{ padding: .3rem .6rem; font-size: .9rem; }
+}
 
 /* Controls */
 .controls{display:flex;gap:.5rem;padding:.6rem 0 .7rem;flex-wrap:wrap}
@@ -487,3 +511,76 @@ body{
 #info-modal .info-content li{
   margin: .2rem 0;
 }
+/* ==== Expert mode toggle (welcome card) ==== */
+.mode-toggle { margin: .75rem 0 0; display:flex; align-items:center; gap:.75rem; }
+.mode-toggle .label { font-weight:600; }
+.mode-toggle .mode-note { color: var(--muted); font-size:.9rem; }
+
+/* Switch renders slider + text inline */
+.switch{
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  height: 24px;          /* no fixed width; lets text sit beside the slider */
+}
+.switch input{ display: none; }
+
+.switch .slider{
+  position: relative;    /* was absolute; make it a normal inline-flex child */
+  width: 46px;
+  height: 24px;
+  cursor: pointer;
+  background: var(--border);
+  border-radius: 999px;
+  transition: .2s;
+}
+.switch .slider::before{
+  content:"";
+  position: absolute;
+  height: 18px; width: 18px;
+  left: 3px; top: 3px;
+  border-radius: 50%;
+  background: #fff;
+  transition: .2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+}
+
+.switch input:checked + .slider{ background: var(--accent); }
+.switch input:checked + .slider::before{ transform: translateX(22px); }
+
+/* make the text readable next to the slider */
+.switch .label{
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ==== Blind (black) tile for Expert mode ==== */
+.tile.blind { background:#000 !important; position:relative; }
+.tile.blind img, .tile.blind canvas, .tile.blind .thumb { opacity:0 !important; }
+.tile.blind::after {
+  content:"?"; position:absolute; inset:0; display:grid; place-items:center;
+  color:#e53935; font-weight:800; font-size:2.25rem; letter-spacing:.02em;
+}
+
+/* ==== No hint UI in Expert mode ==== */
+html[data-mode="expert"] #country-suggestions,
+html[data-mode="expert"] .hint,
+html[data-mode="expert"] .helper { display:none !important; }
+/* ============ Expert: Label groups modal ============ */
+.label-modal .label-title{ font-size:1.15rem; font-weight:700; margin-bottom:.5rem }
+.label-modal .label-list{ display:grid; gap:.5rem; margin:.75rem 0 1rem }
+.label-modal .label-row{ display:flex; align-items:center; gap:.5rem }
+.label-modal .swatch{ width:14px; height:14px; border-radius:3px; display:inline-block }
+/* Color squares for each group color */
+.label-modal .swatch.yellow { background: #FACC15; }  /* yellow */
+.label-modal .swatch.teal   { background: #14B8A6; }  /* teal */
+.label-modal .swatch.purple { background: #A855F7; }  /* purple */
+.label-modal .swatch.red    { background: #EF4444; }  /* red */
+.label-modal input[type="text"]{
+  flex:1; padding:.5rem .6rem; border:1px solid var(--border); border-radius:.5rem; background:#0c111b; color:var(--text)
+}
+.label-modal .actions{ display:flex; justify-content:flex-end; gap:.5rem }
+.label-modal .btn{ padding:.45rem .75rem; border:1px solid var(--border); border-radius:.75rem; background:#0f1624; color:var(--text) }
+.label-modal .btn.primary{ border-color:var(--accent); background:#15213a }
+
