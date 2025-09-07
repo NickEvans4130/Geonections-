@@ -584,3 +584,13 @@ html[data-mode="expert"] .helper { display:none !important; }
 .label-modal .btn{ padding:.45rem .75rem; border:1px solid var(--border); border-radius:.75rem; background:#0f1624; color:var(--text) }
 .label-modal .btn.primary{ border-color:var(--accent); background:#15213a }
 
+.json-download-link{
+  display:inline-block;
+  font-size:.95rem;
+  color:var(--muted);
+  text-decoration: underline;
+}
+.json-download-link:hover{
+  color:var(--text);
+  text-decoration: none;
+}

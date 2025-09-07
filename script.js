@@ -1513,6 +1513,21 @@ message.innerHTML = `
     modal.appendChild(message);
     modal.appendChild(shareBtn);
     modal.appendChild(copyFeedback);
+
+    // --- JSON download link ---
+const jsonLinkWrap = document.createElement("div");
+jsonLinkWrap.style.marginTop = "10px";
+
+const jsonA = document.createElement("a");
+const jsonURL = loadedSource ? new URL(loadedSource, location.href).toString() : "";
+jsonA.href = jsonURL;
+jsonA.setAttribute("download", jsonURL.split("/").pop() || "Geonections.json");
+jsonA.className = "json-download-link";
+jsonA.textContent = `⬇️ Download ${jsonURL.split("/").pop() || "this puzzle’s JSON"}`;
+
+jsonLinkWrap.appendChild(jsonA);
+modal.appendChild(jsonLinkWrap);
+
     modal.appendChild(dismissBtn);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
@@ -1573,6 +1588,22 @@ message.innerHTML = `
   modal.appendChild(title);
   modal.appendChild(message);
   modal.appendChild(shareBtnLocal);
+
+// --- JSON download link (failure) ---
+if (loadedSource) {
+  const jsonLinkWrap = document.createElement("div");
+  jsonLinkWrap.style.marginTop = "10px";
+
+  const jsonA = document.createElement("a");
+  const jsonURL = new URL(loadedSource, location.href).toString();
+  jsonA.href = jsonURL;
+  jsonA.setAttribute("download", jsonURL.split("/").pop() || "Geonections.json");
+  jsonA.className = "json-download-link";
+  jsonA.textContent = `⬇️ Download ${jsonURL.split("/").pop()}`;
+
+  jsonLinkWrap.appendChild(jsonA);
+  modal.appendChild(jsonLinkWrap);
+}s
   modal.appendChild(dismissBtn);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
