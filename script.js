@@ -1603,7 +1603,7 @@ if (loadedSource) {
 
   jsonLinkWrap.appendChild(jsonA);
   modal.appendChild(jsonLinkWrap);
-}s
+}
   modal.appendChild(dismissBtn);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
