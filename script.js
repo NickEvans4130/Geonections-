@@ -11,6 +11,7 @@
 const MODE_KEY = "geonections_mode";
 let currentMode = localStorage.getItem(MODE_KEY) || "normal";
 function isExpertMode() { return currentMode === "expert"; }
+function isEasyMode() { return currentMode === "easy"; }
 function setMode(m) {
   currentMode = m;
   localStorage.setItem(MODE_KEY, m);
@@ -142,6 +143,7 @@ let mistakesLeft = getMaxMistakes();
   let loadedSource = "";
   // Guess history for share text (rows of emoji)
 let shareAttempts = [];
+let solvedGroups = []; // { difficulty: "Easy|Medium|Hard|Expert", named: true|false } in solve order
   // Buffer of 4 proposed groups when in Expert mode
 let expertBuffer = [];
 
@@ -205,6 +207,48 @@ if (expertToggle) {
     applyExpertBlindTile();
   });
 }
+
+// ===== Easy/Expert toggles (welcome + header), mutually exclusive =====
+const easyToggle = document.getElementById("easy-toggle");
+const easyToggleHeader = document.getElementById("easy-toggle-header");
+const expertToggleHeader = document.getElementById("expert-toggle-header");
+
+function syncModeToggles() {
+  const m = currentMode;
+  if (expertToggle) expertToggle.checked = (m === "expert");
+  if (easyToggle) easyToggle.checked = (m === "easy");
+  if (expertToggleHeader) expertToggleHeader.checked = (m === "expert");
+  if (easyToggleHeader) easyToggleHeader.checked = (m === "easy");
+}
+function applyModeChange() {
+  document.documentElement.dataset.mode = currentMode;
+  mistakesLeft = getMaxMistakes();
+  if (mistakesLeftEl) mistakesLeftEl.textContent = `Mistakes: ${mistakesLeft}`;
+  startNewGame();
+  if (isExpertMode()) applyExpertBlindTile();
+  syncModeToggles();
+}
+// Initial sync at load
+syncModeToggles();
+
+// Wire Easy (welcome)
+easyToggle?.addEventListener("change", () => {
+  if (easyToggle.checked) setMode("easy");
+  else if (!expertToggle?.checked) setMode("normal");
+  applyModeChange();
+});
+// Wire Expert (header)
+expertToggleHeader?.addEventListener("change", () => {
+  if (expertToggleHeader.checked) setMode("expert");
+  else if (!easyToggleHeader?.checked) setMode("normal");
+  applyModeChange();
+});
+// Wire Easy (header)
+easyToggleHeader?.addEventListener("change", () => {
+  if (easyToggleHeader.checked) setMode("easy");
+  else if (!expertToggleHeader?.checked) setMode("normal");
+  applyModeChange();
+});
 
   const yearEl = document.getElementById("year");
   if (yearEl) yearEl.textContent = new Date().getFullYear();
@@ -510,6 +554,7 @@ submitBtn?.addEventListener("click", () => {
   // ========= GAME FLOW =========
   function startNewGame() {
     shareAttempts = [];
+    solvedGroups = [];
     selections.clearAll();
 mistakesLeft = getMaxMistakes();
     tagStep = 0;
@@ -845,11 +890,7 @@ updateSubmitDisabled();
     const i = selections.firstFullIdx();
     if (i === -1) return; // nothing ready
     const ids = [...selections.buckets[i]];
-    // Record this guess for share text (Normal mode only)
-if (!isExpertMode()) {
-  // `ids` is the 4 selected tile IDs
-  pushShareRowFromIds(ids);
-}
+
     const sel = boardTiles.filter(t => ids.includes(t.id));
     const countries = [...new Set(sel.map(t => t.country))];
     
@@ -862,15 +903,20 @@ if (!isExpertMode()) {
       
       const maxCount = Math.max(...Object.values(countryCounts));
       
-      if (maxCount === 3) {
-        return wrongGuess("One away!");
-      } else if (maxCount === 2) {
-        return wrongGuess("Two away!");
-      } else {
-        return wrongGuess("Those 4 aren't the same country.");
-      }
-    }
-    const country = countries[0];
+if (maxCount === 3) {
+  pushShareRowFromIds(ids);
+  return wrongGuess("One away!");
+} else if (maxCount === 2) {
+  pushShareRowFromIds(ids);
+  return wrongGuess("Two away!");
+} else {
+  pushShareRowFromIds(ids);
+  return wrongGuess("Those 4 aren't the same country.");
+}
+}                    // ← add this brace to close: if (countries.length !== 1) { ... }
+
+const country = countries[0];
+
 
     const finalize = () => {
       lockGroup(country, sel);
@@ -878,11 +924,24 @@ if (!isExpertMode()) {
       updateSelectionUI();
     };
 
-    if (REQUIRE_COUNTRY_GUESS) {
-      promptCountryGuess(country).then(ok => ok ? finalize() : wrongGuess("country guess incorrect."));
-    } else {
+if (REQUIRE_COUNTRY_GUESS) {
+  if (typeof isEasyMode === "function" && isEasyMode && isEasyMode()) {
+    // Easy: ask for country; wrong/skip doesn't cost a mistake.
+    // Push the successful group row AFTER the prompt, with a ✅/⭕️ marker.
+    promptCountryGuess(country).then(ok => {
+      pushShareRowFromIds(ids, /* named */ !!ok); // ✅ when true, ⭕️ when false
       finalize();
-    }
+    });
+  } else {
+    // Normal: record the attempt row first, then prompt; wrong name costs a mistake.
+    pushShareRowFromIds(ids);
+    promptCountryGuess(country).then(ok => ok ? finalize() : wrongGuess("country guess incorrect."));
+  }
+} else {
+  // No country prompt -> still record the attempt row in non-expert modes
+  if (!isExpertMode()) pushShareRowFromIds(ids);
+  finalize();
+}
   }
   function onSubmitGroupExpert() {
   // Require all 4 buckets (16 tiles) filled before grading
@@ -1188,13 +1247,18 @@ if (allSolved && gameActuallySolved) {
 // Map true group difficulty -> emoji squares (Yellow, Teal(Blue), Purple, Red)
 const DIFF_TO_EMOJI = { Easy: "🟨", Medium: "🟦", Hard: "🟪", Expert: "🟥" };
 
-// Push one "guess row" to the share history
-function pushShareRowFromIds(ids) {
+function pushShareRowFromIds(ids, named) {
   const row = ids.map(id => {
     const t = boardTiles.find(x => x.id === id);
     return DIFF_TO_EMOJI[t?.difficulty] || "⬜";
   }).join("");
-  shareAttempts.push(row);
+  // In Easy mode, only correct groups should carry a marker (✅/⭕️).
+  if (typeof isEasyMode === "function" && isEasyMode && isEasyMode() && typeof named !== "undefined") {
+    shareAttempts.push({ row, named: !!named });
+  } else {
+    // Wrong guesses (or non-Easy modes) are plain 4-emoji rows
+    shareAttempts.push(row);
+  }
 }
 // ========= STREAK (UTC, per puzzle number) =========
 const STREAK_KEY = "gnx_streak";
@@ -1227,7 +1291,27 @@ function markSolvedToday() {
   return streak;
 }
 function buildShareText() {
-  // Use recorded attempts if present; otherwise fall back to the final 4×4
+  // If Easy mode, build rows from solved groups and append ✅/⭕ markers plus Named line
+  const isEasy = (typeof isEasyMode === "function" && isEasyMode && isEasyMode());
+  const puzzleNo =
+    (typeof resolvePuzzleNumberFromURLOrUTC === "function" && resolvePuzzleNumberFromURLOrUTC()) ||
+    (typeof todayPuzzleNumberUTC === "function" && todayPuzzleNumberUTC()) ||
+    (window.currentPuzzleNumber || 1);
+  const streak = getStreak();
+  const link = "https://geonections.com";
+
+if (isEasy) {
+  // Use the actual attempt history:
+  // - Wrong group tries are plain 4-emoji rows (already pushed).
+  // - Correct groups in Easy were pushed as {row, named} so we can add ✅/⭕️.
+  const raw = (shareAttempts && shareAttempts.length) ? shareAttempts.slice() : [];
+  const rows = raw.map(e => (typeof e === "string") ? e : (e.row + (e.named ? "✅" : "⭕️")));
+  const namedCount = raw.filter(e => (typeof e !== "string") && e.named === true).length;
+
+  return `Geonections #${puzzleNo} (Easy)\nStreak: ${streak}\nNamed: ${namedCount}/4\n${rows.join("\n")}\n${link}`;
+}
+
+  // Normal / Expert: existing behavior (rows from attempts or final board)
   const rows = (shareAttempts && shareAttempts.length)
     ? shareAttempts.slice()
     : (() => {
@@ -1241,19 +1325,10 @@ function buildShareText() {
         return tmp;
       })();
 
-  // Figure out the puzzle number you’re on
-  const puzzleNo =
-    (typeof resolvePuzzleNumberFromURLOrUTC === "function" && resolvePuzzleNumberFromURLOrUTC()) ||
-    (typeof todayPuzzleNumberUTC === "function" && todayPuzzleNumberUTC()) ||
-    (window.currentPuzzleNumber || 1);
-
-  // Header ONLY: "Geonections #<n>", then the rows. Nothing else.
-const streak = getStreak();
-const modeLabel = (typeof isExpertMode === "function" && isExpertMode()) ? " (Expert)" : "";
-const link = "https://geonections.com";
-
-return `Geonections #${puzzleNo}${modeLabel}\nStreak: ${streak}\n${rows.join("\n")}\n${link}`;
+  const modeLabel = (typeof isExpertMode === "function" && isExpertMode()) ? " (Expert)" : "";
+  return `Geonections #${puzzleNo}${modeLabel}\nStreak: ${streak}\n${rows.join("\n")}\n${link}`;
 }
+
 async function onShare() {
   const text = buildShareText();
 
@@ -1380,75 +1455,89 @@ const el = tileEls.get(pick.id);
     shuffle(copy);
     return copy.slice(0, n);
   }
-  function promptCountryGuess(correctCountry) {
-    return new Promise(resolve => {
-      // Create overlay
-      const overlay = document.createElement("div");
-      overlay.className = "country-guess-overlay";
-      
-      // Create modal content
-      const modal = document.createElement("div");
-      modal.className = "country-guess-modal";
-      
-      const title = document.createElement("h3");
-      title.className = "country-guess-title";
-      title.textContent = "Enter the country name or 2-letter code";
-      
-      const input = document.createElement("input");
-      input.className = "country-guess-input";
-      input.type = "text";
-      input.placeholder = "e.g., France or FR";
-      input.autocomplete = "off";
-      
-      const buttonContainer = document.createElement("div");
-      buttonContainer.className = "country-guess-buttons";
-      
-      const cancelBtn = document.createElement("button");
-      cancelBtn.className = "country-guess-btn";
-      cancelBtn.textContent = "Cancel";
-      
-      const submitBtn = document.createElement("button");
-      submitBtn.className = "country-guess-btn primary";
-      submitBtn.textContent = "Submit";
-      
-      // Add event listeners
-      const cleanup = () => {
-        document.body.removeChild(overlay);
-        resolve(false);
-      };
-      
-      cancelBtn.addEventListener("click", cleanup);
-      
-      const submitGuess = () => {
-        const guess = input.value.trim();
-        if (guess) {
-          document.body.removeChild(overlay);
-          resolve(compareCountries(guess, correctCountry));
-        }
-      };
-      
-      submitBtn.addEventListener("click", submitGuess);
-input.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") submitGuess();
-});
+function promptCountryGuess(correctCountry) {
+  return new Promise(resolve => {
+    // Create overlay
+    const overlay = document.createElement("div");
+    overlay.className = "country-guess-overlay";
+    
+    // Create modal content
+    const modal = document.createElement("div");
+    modal.className = "country-guess-modal";
+    
+    const title = document.createElement("h3");
+    title.className = "country-guess-title";
+    title.textContent = "Enter the country name or 2-letter code";
+    
+    const input = document.createElement("input");
+    input.className = "country-guess-input";
+    input.type = "text";
+    input.placeholder = "e.g., France or FR";
+    input.autocomplete = "off";
+    
+    const buttonContainer = document.createElement("div");
+    buttonContainer.className = "country-guess-buttons";
+    
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "country-guess-btn";
+    cancelBtn.textContent = (typeof isEasyMode === "function" && isEasyMode && isEasyMode()) ? "Skip" : "Cancel";
+    
+    const submitBtn = document.createElement("button");
+    submitBtn.className = "country-guess-btn primary";
+    submitBtn.textContent = "Submit";
 
-      
-      // Focus input and select text
-      setTimeout(() => {
-        input.focus();
-        input.select();
-      }, 100);
-      
-      // Assemble and show
-      buttonContainer.appendChild(cancelBtn);
-      buttonContainer.appendChild(submitBtn);
-      modal.appendChild(title);
-      modal.appendChild(input);
-      modal.appendChild(buttonContainer);
-      overlay.appendChild(modal);
-      document.body.appendChild(overlay);
+    const feedback = document.createElement("div");
+    feedback.className = "guess-feedback";
+    feedback.style.display = "none";
+    
+    buttonContainer.appendChild(cancelBtn);
+    buttonContainer.appendChild(submitBtn);
+    
+    modal.appendChild(title);
+    modal.appendChild(input);
+    modal.appendChild(buttonContainer);
+    modal.appendChild(feedback);
+    overlay.appendChild(modal);
+    
+    document.body.appendChild(overlay);
+    input.focus();
+    
+    const isEasy = (typeof isEasyMode === "function" && isEasyMode && isEasyMode());
+    
+    const close = (ok) => {
+      document.body.removeChild(overlay);
+      resolve(!!ok);
+    };
+
+    cancelBtn.addEventListener("click", () => close(false));
+
+    const trySubmit = () => {
+      const guess = input.value.trim();
+      if (!guess) return;
+      const correct = compareCountries(guess, correctCountry);
+      if (isEasy) {
+        if (correct) {
+          close(true);
+        } else {
+          feedback.textContent = "Not quite, try again or press Skip.";
+          feedback.classList.remove("correct");
+          feedback.classList.add("incorrect");
+          feedback.style.display = "block";
+          input.select();
+        }
+      } else {
+        close(correct);
+      }
+    };
+
+    submitBtn.addEventListener("click", trySubmit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") trySubmit();
     });
-  }
+  });
+}
+
+
 
   function showCongratulationsOverlay() {
     // Create overlay
@@ -1639,8 +1728,6 @@ if (loadedSource) {
     const countryCode = document.createElement("div");
     countryCode.className = "dev-country-code";
     countryCode.textContent = country;
-    tileEl.appendChild(countryCode);
+  tileEl.appendChild(countryCode);
   }
-
 })();
-

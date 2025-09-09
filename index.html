@@ -17,6 +17,16 @@
       <div class="status">
         <span id="groups-remaining">Groups: 4</span>
         <span id="mistakes-left">Mistakes: 4</span>
+        <label class="switch" style="margin-left:.5rem;">
+  <input id="easy-toggle-header" type="checkbox" />
+  <span class="slider"></span>
+  <span class="label">Easy</span>
+</label>
+<label class="switch" style="margin-left:.25rem;">
+  <input id="expert-toggle-header" type="checkbox" />
+  <span class="slider"></span>
+  <span class="label">Expert</span>
+</label>
       </div>
     </div>
   </header>
@@ -88,7 +98,8 @@
 
     <p><em>Good luck!</em></p>
 
-    <div class="mode-toggle">
+<!-- Expert row -->
+<div class="mode-toggle">
   <label class="switch">
     <input id="expert-toggle" type="checkbox" />
     <span class="slider"></span>
@@ -99,11 +110,21 @@
   </div>
 </div>
 
-    <p style="margin-top: 0.75rem; color: var(--muted);">
-      For feedback or anything, hit me up on Discord. Username: <strong>a082239</strong>
-    </p>
+<!-- Easy row -->
+<div class="mode-toggle">
+  <label class="switch">
+    <input id="easy-toggle" type="checkbox" />
+    <span class="slider"></span>
+    <span class="label">Easy mode</span>
+  </label>
+  <div class="mode-note">
+    Make groups; naming the country is optional (no penalty for wrong/skip).
   </div>
 </div>
+
+<p class="feedback-note">For feedback or anything, hit me up on Discord. Username: <strong>a082239</strong></p>
+</div> <!-- /.info-content -->
+</div> <!-- /#info-modal -->
 
 <script src="./tileModal.js" defer></script>
 <script src="./script.js" defer></script>

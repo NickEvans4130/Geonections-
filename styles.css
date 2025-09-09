@@ -594,3 +594,29 @@ html[data-mode="expert"] .helper { display:none !important; }
   color:var(--text);
   text-decoration: none;
 }
+/* Welcome card toggle layout & sizing (modal only) */
+#info-modal .mode-toggle{
+  display:flex;
+  align-items:center;
+  gap:.75rem 1rem;      /* vertical & horizontal gap */
+  flex-wrap:wrap;       /* lets the note wrap under on narrow widths */
+}
+#info-modal .mode-toggle .switch{ flex:0 0 auto; }
+#info-modal .mode-toggle .mode-note{
+  flex:1 1 360px;       /* note can occupy the rest of the row */
+  min-width:280px;
+  color:var(--muted);
+  line-height:1.35;
+}
+
+/* Slightly larger, perfectly centered pill in the modal */
+#info-modal .switch{ height:26px; }
+#info-modal .switch .slider{ width:50px; height:26px; }
+#info-modal .switch .slider::before{ width:22px; height:22px; left:2px; top:2px; }
+#info-modal .switch input:checked + .slider::before{ transform: translateX(24px); }
+#info-modal .switch .label{ line-height:26px; font-weight:600; }
+/* Welcome card note stays inside the card */
+#info-modal .feedback-note{
+  margin: .9rem 0 0;
+  color: var(--muted);
+}
