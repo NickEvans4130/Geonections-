@@ -18,6 +18,37 @@ function setMode(m) {
   document.documentElement.dataset.mode = m; // for CSS
 }
 
+// Add Load/Save Helpers
+const PROGRESS_KEY = "gnx_progress";
+
+function saveProgressState() {
+  const state = {
+    boardTiles,
+    mistakesLeft,
+    solvedGroups,
+    shareAttempts,
+    selections: selections.entries(),
+    puzzle: currentPuzzleNumber(),
+    mode: currentMode
+  };
+  localStorage.setItem(PROGRESS_KEY, JSON.stringify(state));
+}
+
+function loadProgressState() {
+  const raw = localStorage.getItem(PROGRESS_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function clearProgressState() {
+  localStorage.removeItem(PROGRESS_KEY);
+}
+
+
 // Mistake budget: 4 normal, 2 expert
 const MAX_MISTAKES_NORMAL = 4;
 const MAX_MISTAKES_EXPERT = 2;
@@ -201,6 +232,22 @@ if (expertToggle) {
     setMode(expertToggle.checked ? "expert" : "normal");
     mistakesLeft = getMaxMistakes();
     if (mistakesLeftEl) mistakesLeftEl.textContent = `Mistakes: ${mistakesLeft}`;
+// Load on init
+const saved = loadProgressState();
+if (saved && saved.puzzle === currentPuzzleNumber() && saved.mode === currentMode) {
+  // Restore saved state
+  boardTiles = saved.boardTiles || [];
+  mistakesLeft = saved.mistakesLeft ?? getMaxMistakes();
+  solvedGroups = saved.solvedGroups || [];
+  shareAttempts = saved.shareAttempts || [];
+  saved.selections?.forEach((ids, i) => {
+    ids.forEach(id => selections.add(id));
+  });
+  initialRenderBoard();
+  updateStatus();
+  return; // Skip new game if progress loaded
+}
+
     // fresh run so rules apply immediately
     startNewGame();
     // ensure the one blind tile is applied (see 3d)
@@ -281,8 +328,31 @@ const puzzle = String(resolvePuzzleNumberFromURLOrUTC());
       const { json, used } = await tryFetchJSON(candidates);
       loadedSource = used;
       allData = normalizeGeonections(json);
-      startNewGame();
-      applyExpertBlindTile();
+
+      // Try to load a saved game for THIS puzzle + mode
+      const saved = loadProgressState();
+      if (saved && saved.puzzle === currentPuzzleNumber() && saved.mode === currentMode) {
+        console.log("Restoring saved progress...");
+        boardTiles = saved.boardTiles || [];
+        mistakesLeft = saved.mistakesLeft ?? getMaxMistakes();
+        solvedGroups = saved.solvedGroups || [];
+        shareAttempts = saved.shareAttempts || [];
+
+        // Restore selections into buckets
+        selections.clearAll();
+        saved.selections?.forEach((ids, i) => {
+          ids.forEach(id => selections.add(id));
+        });
+
+        // Render the restored board
+        initialRenderBoard();
+        updateStatus();
+      } else {
+        console.log("Starting a new game...");
+        startNewGame();
+        applyExpertBlindTile();
+      }
+
       // Hide any error message after successful load
       showMessage("");
       // Show info modal once per session (if present in DOM)
@@ -353,6 +423,7 @@ submitBtn?.addEventListener("click", () => {
     // Move DOM elements without re-rendering
     shuffleBoardDOM();
     showMessage("");
+    saveProgressState(); 
   });
   shareBtn?.addEventListener("click", onShare);
                 const pastBtn     = $("#past-btn");
@@ -885,6 +956,7 @@ updateSubmitDisabled();
     updateSelectionUI();
     // Clear any progress messages
     showMessage("");
+    saveProgressState();
   }
   function onSubmitGroup() {
     const i = selections.firstFullIdx();
@@ -942,6 +1014,7 @@ if (REQUIRE_COUNTRY_GUESS) {
   if (!isExpertMode()) pushShareRowFromIds(ids);
   finalize();
 }
+  saveProgressState();
   }
   function onSubmitGroupExpert() {
   // Require all 4 buckets (16 tiles) filled before grading
@@ -949,6 +1022,7 @@ if (REQUIRE_COUNTRY_GUESS) {
   const allFull = groups.every(arr => arr.length === selections.capacity);
   if (!allFull) {
     showMessage("Expert: pick all 16 tiles (4 groups) before submitting.", true);
+    saveProgressState();
     return;
   }
 // Overwrite share history with this all-at-once attempt (4 rows)
@@ -962,6 +1036,7 @@ groupsNow.forEach(arr => pushShareRowFromIds(arr));
       const codes = new Set(arr.map(id => boardTiles.find(t => t.id === id)?.country));
       return codes.size === 1;
     });
+    
 
 if (allCorrect) {
   // Lock everything and finish
@@ -1014,6 +1089,7 @@ if (allCorrect) {
     reorderBoardAfterSolve();
     
     updateStatus();
+    saveProgressState();
     
 // Check if all tiles are now locked (game solved)
 const allSolved = boardTiles.every(t => t.locked);
@@ -1169,11 +1245,14 @@ function reorderBoardIntoCountryRows() {
   function addSolvedStripe(difficulty, country, urls) {
   }
   function wrongGuess(msg) {
-    mistakesLeft--;
-    updateStatus();
-    showMessage(`${msg} (${mistakesLeft} mistakes left)`, true);
-    if (mistakesLeft <= 0) revealSolution();
-  }
+  mistakesLeft--;
+  updateStatus();
+  showMessage(`${msg} (${mistakesLeft} mistakes left)`, true);
+  if (mistakesLeft <= 0) revealSolution();
+
+  saveProgressState(); 
+}
+
   function revealSolution() {
     // Lock all remaining tiles and end the game
     boardTiles.forEach(t => t.locked = true);
@@ -1192,16 +1271,17 @@ boardTiles.forEach(tile => {
 reorderBoardIntoCountryRows();
 
 // Game ended (failed) - enable sharing
-shareBtn?.removeAttribute("disabled");
-    
-// Only show congratulations if the game was actually solved, not just failed
-const allSolved = boardTiles.every(t => t.locked);
-if (allSolved && gameActuallySolved) {
-  showCongratulationsOverlay();
-} else {
-  showFailureOverlay(); // <— show the CTA + daily challenge even on failure
-}
+  shareBtn?.removeAttribute("disabled");
+
+  if (allSolved && gameActuallySolved) {
+    showCongratulationsOverlay();
+  } else {
+    showFailureOverlay();
   }
+
+  clearProgressState(); // <— clear since puzzle is over
+}
+
   function updateStatus() {
     if (groupsRemainingEl) {
       const solvedGroups = Math.floor(boardTiles.filter(t => t.locked).length / 4);
